@@ -18,6 +18,23 @@ mkdir -p "$ZIEL"
 cp -r "$QUELLE"/. "$ZIEL"/
 chmod 700 "$ZIEL"
 
+echo "1b/4 Stimme (Edge TTS) einrichten …"
+UV="$(command -v uv || true)"
+for k in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv" "$HOME/.hermes/bin/uv"; do
+  [ -z "$UV" ] && [ -x "$k" ] && UV="$k"
+done
+PY="/usr/bin/python3"
+if [ -n "$UV" ]; then
+  [ -x "$ZIEL/.venv/bin/python" ] || "$UV" venv --quiet "$ZIEL/.venv"
+  if "$UV" pip install --quiet --python "$ZIEL/.venv/bin/python" "edge-tts==7.3.1"; then
+    PY="$ZIEL/.venv/bin/python"
+  else
+    echo "   Hinweis: Stimme konnte nicht installiert werden – die App nutzt dann die iPhone-Stimme."
+  fi
+else
+  echo "   Hinweis: uv nicht gefunden – die App nutzt die iPhone-Stimme."
+fi
+
 echo "2/4 Hermes-Schnittstelle (nur lokal) einschalten …"
 touch "$ENV"
 grep -q '^API_SERVER_ENABLED=' "$ENV" || echo 'API_SERVER_ENABLED=true' >> "$ENV"
@@ -28,13 +45,13 @@ chmod 600 "$ENV"
 
 echo "3/4 Dienst einrichten …"
 mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/jarvis-app.service" <<'EOF'
+cat > "$HOME/.config/systemd/user/jarvis-app.service" <<EOF
 [Unit]
 Description=Jarvis-App (Oberfläche für Hermes und Lulu)
 After=network-online.target hermes-gateway.service
 
 [Service]
-ExecStart=/usr/bin/python3 %h/jarvis-app/server.py
+ExecStart=$PY $ZIEL/server.py
 Environment=JARVIS_NUTZER=HelenTefe@github
 Restart=always
 RestartSec=3
@@ -46,8 +63,10 @@ systemctl --user daemon-reload
 systemctl --user enable jarvis-app.service >/dev/null
 systemctl --user restart jarvis-app.service
 
-echo "4/4 Hermes neu starten (damit die Schnittstelle aktiv wird) …"
-systemctl --user restart hermes-gateway.service || hermes gateway restart || true
+if [ "${1:-}" != "--nur-app" ]; then
+  echo "4/4 Hermes neu starten (damit die Schnittstelle aktiv wird) …"
+  systemctl --user restart hermes-gateway.service || hermes gateway restart || true
+fi
 sleep 5
 
 if systemctl --user is-active --quiet jarvis-app.service; then
