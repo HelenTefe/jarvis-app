@@ -24,6 +24,7 @@ WEB = HIER / "web"
 HERMES_ENV = Path(os.environ.get("HERMES_ENV_DATEI", Path.home() / ".hermes" / ".env"))
 HERMES_API = os.environ.get("HERMES_API", "http://127.0.0.1:8642")
 PORT = int(os.environ.get("JARVIS_PORT", "9130"))
+UPDATE_REPO = "HelenTefe/jarvis-app"
 GESPRAECH_DATEI = HIER / ".gespraech"
 
 
@@ -80,18 +81,65 @@ def lulu_bereit():
 
 # ---------- Hermes ----------
 
-def hermes_fragen(text, env):
+ANWEISUNG = ("Du bist Jarvis, Helens persönlicher Sprach-Assistent für ihre Affiliate-Webseiten. "
+             "Deine Antworten werden laut vorgelesen: antworte auf Deutsch, in ein bis drei kurzen, "
+             "natürlichen Sätzen, ohne Listen, Tabellen, Links oder Markdown – außer Helen bittet ausdrücklich "
+             "um Details. Für Lulu-Aufgaben nutze den Skill 'lulu'.")
+DENKSTUFE = os.environ.get("JARVIS_DENKSTUFE", "low")
+
+
+def _hermes_anfrage(text, env, stream):
     schluessel = env.get("API_SERVER_KEY", "")
     if not schluessel:
         raise lulu.Fehler("Die Hermes-Schnittstelle ist noch nicht eingeschaltet.")
-    anweisung = ("Du bist Jarvis, Helens persönlicher Assistent für ihre Affiliate-Webseiten. "
-                 "Antworte auf Deutsch, kurz, freundlich und einfach – die Antwort wird oft vorgelesen. "
-                 "Für Lulu-Aufgaben nutze den Skill 'lulu'.")
-    daten = {"model": "hermes-agent", "input": text, "instructions": anweisung,
-             "conversation": gespraech(), "store": True}
-    req = urllib.request.Request(
+    daten = {"model": "hermes-agent", "input": text, "instructions": ANWEISUNG,
+             "conversation": gespraech(), "store": True, "stream": stream,
+             "model_options": {"reasoning_effort": DENKSTUFE}}
+    return urllib.request.Request(
         HERMES_API + "/v1/responses", data=json.dumps(daten).encode(), method="POST",
-        headers={"Authorization": "Bearer " + schluessel, "Content-Type": "application/json"})
+        headers={"Authorization": "Bearer " + schluessel, "Content-Type": "application/json",
+                 "Accept": "text/event-stream" if stream else "application/json"})
+
+
+def hermes_strom(text, env, senden):
+    """Leitet Hermes' Antwort Stück für Stück weiter: senden({"t": "text"|"werkzeug"|"ende", ...})."""
+    req = _hermes_anfrage(text, env, True)
+    nebenbei = set()  # Zwischenkommentare (phase=commentary) nicht vorlesen
+    status = None
+    try:
+        with urllib.request.urlopen(req, timeout=600) as a:
+            for roh in a:
+                zeile = roh.decode("utf-8", "replace").strip()
+                if not zeile.startswith("data:"):
+                    continue
+                inhalt = zeile[5:].strip()
+                if not inhalt or inhalt == "[DONE]":
+                    continue
+                try:
+                    ev = json.loads(inhalt)
+                except json.JSONDecodeError:
+                    continue
+                typ = ev.get("type", "")
+                if typ == "response.output_item.added":
+                    item = ev.get("item") or {}
+                    if item.get("phase") == "commentary":
+                        nebenbei.add(item.get("id"))
+                    elif item.get("type") == "function_call":
+                        senden({"t": "werkzeug", "n": item.get("name")})
+                elif typ == "response.output_text.delta" and ev.get("item_id") not in nebenbei:
+                    if ev.get("delta"):
+                        senden({"t": "text", "d": ev["delta"]})
+                elif typ in ("response.completed", "response.failed", "response.cancelled", "response.incomplete"):
+                    status = (ev.get("response") or {}).get("status") or typ.rsplit(".", 1)[-1]
+    except urllib.error.HTTPError as e:
+        raise lulu.Fehler(f"Hermes meldet Fehler {e.code}.") from None
+    except urllib.error.URLError:
+        raise lulu.Fehler("Hermes ist gerade nicht erreichbar.") from None
+    senden({"t": "ende", "status": status})
+
+
+def hermes_fragen(text, env):
+    req = _hermes_anfrage(text, env, False)
     try:
         with urllib.request.urlopen(req, timeout=600) as a:
             antwort = json.loads(a.read().decode())
@@ -275,6 +323,43 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(400, {"fehler": "Leere Nachricht"})
                     return
                 self._json(200, hermes_fragen(text, env))
+                return
+            if pfad == "/api/chat-strom":
+                text = str(daten.get("text", "")).strip()[:4000]
+                if not text:
+                    self._json(400, {"fehler": "Leere Nachricht"})
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+
+                def senden(obj):
+                    self.wfile.write(("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode())
+                    self.wfile.flush()
+                try:
+                    hermes_strom(text, env, senden)
+                except lulu.Fehler as e:
+                    senden({"t": "fehler", "d": str(e)})
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
+            if pfad == "/api/aktualisieren":
+                # Holt die neueste Version aus dem eigenen Repo und installiert sie – in einem eigenen
+                # systemd-Lauf, damit der Neustart der App das Update nicht abbricht.
+                skript = (
+                    "set -e; d=$(mktemp -d); cd \"$d\"; "
+                    "curl -fsSL -o a.tgz https://codeload.github.com/" + UPDATE_REPO + "/tar.gz/main; "
+                    "tar xzf a.tgz; bash */installieren.sh --nur-app; rm -rf \"$d\"")
+                import subprocess
+                try:
+                    subprocess.run(["systemd-run", "--user", "--collect", "--unit",
+                                    "jarvis-update-" + time.strftime("%H%M%S"), "bash", "-c", skript],
+                                   check=True, timeout=20, capture_output=True)
+                except (OSError, subprocess.SubprocessError) as e:
+                    raise lulu.Fehler(f"Update konnte nicht starten ({type(e).__name__}).") from None
+                self._json(200, {"ok": True, "hinweis": "Update läuft – in etwa 30 Sekunden neu laden."})
                 return
             if pfad == "/api/neu":
                 self._json(200, {"gespraech": neues_gespraech()})
