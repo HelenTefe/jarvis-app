@@ -24,7 +24,20 @@ WEB = HIER / "web"
 HERMES_ENV = Path(os.environ.get("HERMES_ENV_DATEI", Path.home() / ".hermes" / ".env"))
 HERMES_API = os.environ.get("HERMES_API", "http://127.0.0.1:8642")
 PORT = int(os.environ.get("JARVIS_PORT", "9130"))
-GESPRAECH = "jarvis-app"
+GESPRAECH_DATEI = HIER / ".gespraech"
+
+
+def gespraech():
+    try:
+        return GESPRAECH_DATEI.read_text().strip() or "jarvis-app"
+    except OSError:
+        return "jarvis-app"
+
+
+def neues_gespraech():
+    name = "jarvis-app-" + time.strftime("%Y%m%d-%H%M%S")
+    GESPRAECH_DATEI.write_text(name)
+    return name
 
 sys.path.insert(0, str(HIER))
 import lulu  # noqa: E402  (eigene Kopie des Lulu-Skripts)
@@ -75,7 +88,7 @@ def hermes_fragen(text, env):
                  "Antworte auf Deutsch, kurz, freundlich und einfach – die Antwort wird oft vorgelesen. "
                  "Für Lulu-Aufgaben nutze den Skill 'lulu'.")
     daten = {"model": "hermes-agent", "input": text, "instructions": anweisung,
-             "conversation": GESPRAECH, "store": True}
+             "conversation": gespraech(), "store": True}
     req = urllib.request.Request(
         HERMES_API + "/v1/responses", data=json.dumps(daten).encode(), method="POST",
         headers={"Authorization": "Bearer " + schluessel, "Content-Type": "application/json"})
@@ -104,6 +117,41 @@ def hermes_online(env):
             return a.status == 200 and bool(env.get("API_SERVER_KEY"))
     except Exception:
         return False
+
+
+# ---------- Stimme (Microsoft Edge Neural, kostenlos) ----------
+
+STIMME = os.environ.get("JARVIS_STIMME", "de-DE-ConradNeural")
+
+
+def sprechtext(text):
+    t = re.sub(r"https?://\S+", "Link", text)
+    t = re.sub(r"[*_`#>|]", "", t)
+    t = re.sub(r"^\s*[-•]\s*", "", t, flags=re.M)
+    return re.sub(r"\s+", " ", t).strip()[:1500]
+
+
+def sprechen(text):
+    try:
+        import asyncio
+        import edge_tts
+    except ImportError:
+        raise lulu.Fehler("Sprachausgabe ist nicht installiert.") from None
+
+    async def erzeugen():
+        mp3 = bytearray()
+        async for teil in edge_tts.Communicate(text, STIMME, rate="+4%").stream():
+            if teil.get("type") == "audio":
+                mp3 += teil["data"]
+        return bytes(mp3)
+
+    try:
+        daten = asyncio.run(erzeugen())
+    except Exception as e:  # Netzwerk/Dienst
+        raise lulu.Fehler(f"Stimme gerade nicht verfügbar ({type(e).__name__}).") from None
+    if not daten:
+        raise lulu.Fehler("Stimme lieferte keinen Ton.")
+    return daten
 
 
 # ---------- Zahlen ----------
@@ -183,7 +231,12 @@ class Handler(BaseHTTPRequestHandler):
         env = env_laden()
         try:
             if pfad == "/api/status":
-                self._json(200, {"hermes": hermes_online(env), "lulu": lulu_bereit(),
+                try:
+                    import edge_tts  # noqa: F401
+                    stimme = True
+                except ImportError:
+                    stimme = False
+                self._json(200, {"hermes": hermes_online(env), "lulu": lulu_bereit(), "stimme": stimme,
                                  "github": bool(os.environ.get("GITHUB_TOKEN")),
                                  "nutzer": self.headers.get("Tailscale-User-Name", "")})
             elif pfad == "/api/beitraege":
@@ -222,6 +275,22 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(400, {"fehler": "Leere Nachricht"})
                     return
                 self._json(200, hermes_fragen(text, env))
+                return
+            if pfad == "/api/neu":
+                self._json(200, {"gespraech": neues_gespraech()})
+                return
+            if pfad == "/api/sprechen":
+                text = sprechtext(str(daten.get("text", "")))
+                if not text:
+                    self._json(400, {"fehler": "Kein Text"})
+                    return
+                mp3 = sprechen(text)
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(mp3)))
+                self.end_headers()
+                self.wfile.write(mp3)
                 return
             m = re.fullmatch(r"/api/beitraege/(\d+)/(freigeben|ablehnen)", pfad)
             if m:
