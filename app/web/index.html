@@ -194,6 +194,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
     <div class="abschnitt">Einstellungen</div>
     <div class="einstellung"><span>Jarvis antwortet mit Stimme</span><button type="button" class="schalter" id="stimmeSchalter" role="switch" aria-checked="true" aria-label="Stimme"></button></div>
     <button type="button" class="textknopf" id="vergessen">Gesprächsverlauf vergessen</button>
+    <button type="button" class="textknopf" id="aktualisieren">App aktualisieren</button>
   </div>
 </section>
 
@@ -243,33 +244,44 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
     } catch {}
     try { if ("speechSynthesis" in window && !speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
   }
+  // Sätze werden nacheinander erzeugt und abgespielt; der nächste wird schon geladen, während einer läuft.
+  let warteschlange = [], spieltGerade = false, generation = 0;
   function verstummen() {
+    generation++; warteschlange = []; spieltGerade = false;
     try { if (quelle) { quelle.onended = null; quelle.stop(); } } catch {}
     quelle = null; clearInterval(pegelUhr);
     try { speechSynthesis.cancel(); } catch {}
   }
-  async function sprich(text) {
-    if (!stimmeAn) return;
-    verstummen();
-    if (serverStimme && ctx) {
-      try {
-        const a = await api("/api/sprechen", { text }, true);
-        const puffer = await ctx.decodeAudioData(await a.arrayBuffer());
-        const s = ctx.createBufferSource(), an = ctx.createAnalyser(); an.fftSize = 256;
-        s.buffer = puffer; s.connect(an); an.connect(ctx.destination);
-        const werte = new Uint8Array(an.frequencyBinCount);
-        pegelUhr = setInterval(() => { an.getByteFrequencyData(werte); let m = 0; for (const v of werte) m += v; kugel.style.setProperty("--pegel", (1 + Math.min(.14, m / werte.length / 900)).toFixed(3)); }, 60);
-        s.onended = () => { clearInterval(pegelUhr); quelle = null; if (!beschaeftigt) zustand("ruhe"); };
-        quelle = s; zustand("spricht"); s.start(0);
-        return;
-      } catch {}
-    }
-    if ("speechSynthesis" in window) { // Ersatz: iPhone-Stimme
-      const u = new SpeechSynthesisUtterance(text.replace(/[*`#_>]/g, "").replace(/https?:\/\/\S+/g, "Link").slice(0, 1200));
+  function holeTon(text, gen) {
+    return api("/api/sprechen", { text }, true).then((a) => a.arrayBuffer()).then((b) => gen === generation ? ctx.decodeAudioData(b) : null).catch(() => null);
+  }
+  function satzSprechen(text) {
+    if (!stimmeAn || !text.trim()) return;
+    const gen = generation;
+    if (serverStimme && ctx) warteschlange.push({ text, ton: holeTon(text, gen), gen });
+    else warteschlange.push({ text, ton: Promise.resolve(null), gen });
+    if (!spieltGerade) naechster();
+  }
+  async function naechster() {
+    const e = warteschlange.shift();
+    if (!e) { spieltGerade = false; if (!beschaeftigt) zustand("ruhe"); return; }
+    spieltGerade = true;
+    const puffer = await e.ton;
+    if (e.gen !== generation) return;
+    if (puffer) {
+      const s = ctx.createBufferSource(), an = ctx.createAnalyser(); an.fftSize = 256;
+      s.buffer = puffer; s.connect(an); an.connect(ctx.destination);
+      const werte = new Uint8Array(an.frequencyBinCount);
+      clearInterval(pegelUhr);
+      pegelUhr = setInterval(() => { an.getByteFrequencyData(werte); let m = 0; for (const v of werte) m += v; kugel.style.setProperty("--pegel", (1 + Math.min(.14, m / werte.length / 900)).toFixed(3)); }, 60);
+      s.onended = () => { clearInterval(pegelUhr); quelle = null; naechster(); };
+      quelle = s; zustand("spricht"); s.start(0);
+    } else if ("speechSynthesis" in window) { // Ersatz: iPhone-Stimme
+      const u = new SpeechSynthesisUtterance(e.text);
       u.lang = "de-DE"; const v = speechSynthesis.getVoices().find((x) => x.lang && x.lang.startsWith("de")); if (v) u.voice = v;
-      u.onend = () => { if (!beschaeftigt) zustand("ruhe"); };
+      u.onend = () => { if (e.gen === generation) naechster(); };
       zustand("spricht"); speechSynthesis.speak(u);
-    }
+    } else naechster();
   }
   function setzeStimme(an) {
     stimmeAn = an; speicher.schreiben("jarvis.stimme", an);
@@ -283,22 +295,62 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
   setzeStimme(stimmeAn);
 
   // ---------- Fragen ----------
+  const vorlesbar = (t) => t.replace(/https?:\/\/\S+/g, "Link").replace(/[*_`#>|]/g, "").replace(/^\s*[-•]\s*/gm, "").replace(/\s+/g, " ").trim();
   async function frage(text) {
     text = (text || "").trim();
     if (!text || beschaeftigt) return;
     beschaeftigt = true; verstummen();
-    zeige('<span class="du">„' + esc(text) + '“</span>Einen Moment …', true);
+    const kopf = '<span class="du">„' + esc(text) + '“</span>';
+    zeige(kopf + "Einen Moment …", true);
     zustand("denkt");
+    let ganz = "", rest = "", werkzeug = false, fehler = null;
+    // Gibt fertige Sätze an die Stimme weiter; sehr kurze Sätze werden mit dem nächsten gebündelt.
+    function sätzeAbgeben(alles) {
+      const ende = /[.!?…:](?=\s)/g;
+      let m, schnitt = -1;
+      while ((m = ende.exec(rest))) {
+        if (m.index + 1 >= 18) { schnitt = m.index + 1; break; }
+      }
+      if (schnitt > 0) {
+        satzSprechen(vorlesbar(rest.slice(0, schnitt)));
+        rest = rest.slice(schnitt).replace(/^\s+/, "");
+        return sätzeAbgeben(alles);
+      }
+      if (alles && rest.trim()) { satzSprechen(vorlesbar(rest)); rest = ""; }
+    }
     try {
-      const a = await api("/api/chat", { text });
-      zeige('<span class="du">„' + esc(text) + '“</span>' + huebsch(a.antwort));
-      beschaeftigt = false;
-      zustand("ruhe");
-      sprich(a.antwort);
-      if ((a.werkzeuge || []).length) setTimeout(laden, 800);
+      const a = await fetch("/api/chat-strom", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" }, body: JSON.stringify({ text }) });
+      if (!a.ok || !a.body) { let j = {}; try { j = await a.json(); } catch {} throw new Error(j.fehler || "Fehler " + a.status); }
+      const leser = a.body.getReader(), dek = new TextDecoder();
+      let puffer = "";
+      for (;;) {
+        const { value, done } = await leser.read();
+        if (done) break;
+        puffer += dek.decode(value, { stream: true });
+        let i;
+        while ((i = puffer.indexOf("\n\n")) >= 0) {
+          const block = puffer.slice(0, i); puffer = puffer.slice(i + 2);
+          if (!block.startsWith("data:")) continue;
+          let ev; try { ev = JSON.parse(block.slice(5)); } catch { continue; }
+          if (ev.t === "text") {
+            if (!ganz) zustand("ruhe");
+            ganz += ev.d; rest += ev.d;
+            zeige(kopf + huebsch(ganz));
+            sätzeAbgeben(false);
+          } else if (ev.t === "werkzeug") {
+            werkzeug = true; if (!ganz) zeige(kopf + "Ich frage Lulu …", true);
+          } else if (ev.t === "fehler") fehler = ev.d;
+        }
+      }
+      if (fehler && !ganz) throw new Error(fehler);
+      if (!ganz) zeige(kopf + "(keine Antwort)", true);
+      sätzeAbgeben(true);
+      if (werkzeug) setTimeout(laden, 800);
     } catch (e) {
-      beschaeftigt = false; zustand("ruhe");
       zeige("Das hat nicht geklappt: " + esc(e.message));
+    } finally {
+      beschaeftigt = false;
+      if (!spieltGerade) zustand("ruhe");
     }
   }
   document.querySelectorAll(".vorschlag").forEach((b) => (b.onclick = () => { audioWecken(); frage(b.dataset.frage); }));
@@ -345,6 +397,18 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
   $("vergessen").onclick = async () => {
     try { await api("/api/neu", {}); blatt(false); zeige("Neues Gespräch. Wie kann ich helfen?", true); }
     catch (e) { zeige("Konnte nicht neu starten: " + esc(e.message)); }
+  };
+
+  let updateSicher = false;
+  $("aktualisieren").onclick = async () => {
+    const k = $("aktualisieren");
+    if (!updateSicher) { updateSicher = true; k.textContent = "Wirklich aktualisieren? Nochmal tippen"; setTimeout(() => { updateSicher = false; k.textContent = "App aktualisieren"; }, 4000); return; }
+    k.disabled = true; k.textContent = "Aktualisiere …";
+    try {
+      await api("/api/aktualisieren", {});
+      k.textContent = "Lade gleich neu …";
+      setTimeout(() => location.reload(), 30000);
+    } catch (e) { k.disabled = false; updateSicher = false; k.textContent = "Fehlgeschlagen: " + e.message; }
   };
 
   // ---------- Freigaben ----------
