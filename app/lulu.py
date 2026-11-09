@@ -37,7 +37,7 @@ class Fehler(Exception):
 def _umgebung(name):
     wert = os.environ.get(name, "").strip()
     if not wert:
-        raise Fehler(f"{name} fehlt. Bitte in Hermes unter Einstellungen → Keys eintragen.")
+        raise Fehler(f"{name} fehlt. Bitte in der Jarvis-App unter Übersicht → Verbindungen eintragen.")
     return wert
 
 

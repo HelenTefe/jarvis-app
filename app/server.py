@@ -79,6 +79,41 @@ def lulu_bereit():
     return all(os.environ.get(k) for k in ("LULU_SUPABASE_URL", "LULU_SUPABASE_KEY"))
 
 
+# ---------- Schlüssel eintragen (nur diese drei, Werte werden nie zurückgegeben) ----------
+
+SCHLUESSEL_REGELN = {
+    "GITHUB_TOKEN": re.compile(r"(github_pat_|ghp_)[A-Za-z0-9_]{20,255}"),
+    "LULU_SUPABASE_URL": re.compile(r"https://[a-z0-9]{10,40}\.supabase\.co/?"),
+    "LULU_SUPABASE_KEY": re.compile(r"[A-Za-z0-9_\-\.]{30,1200}"),
+}
+
+
+def schluessel_speichern(name, wert):
+    regel = SCHLUESSEL_REGELN.get(name)
+    if not regel:
+        raise lulu.Fehler("Diesen Schlüssel kann die App nicht setzen.")
+    wert = (wert or "").strip()
+    if not regel.fullmatch(wert):
+        hilfe = {"GITHUB_TOKEN": "Ein GitHub-Token beginnt mit „github_pat_“.",
+                 "LULU_SUPABASE_URL": "Die Adresse sieht so aus: https://….supabase.co",
+                 "LULU_SUPABASE_KEY": "Bitte den ganzen Schlüssel ohne Leerzeichen einfügen."}[name]
+        raise lulu.Fehler("Das sieht nicht richtig aus. " + hilfe)
+    with _env_sperre:
+        zeilen = HERMES_ENV.read_text().splitlines() if HERMES_ENV.exists() else []
+        zeilen = [z for z in zeilen if not re.match(r"\s*(export\s+)?" + name + r"\s*=", z)]
+        zeilen.append(f"{name}={wert}")
+        HERMES_ENV.write_text("\n".join(zeilen) + "\n")
+        os.chmod(HERMES_ENV, 0o600)
+    # Hermes neu starten, damit er den Schlüssel kennt (im Hintergrund, blockiert nicht).
+    try:
+        import subprocess
+        subprocess.Popen(["systemctl", "--user", "restart", "hermes-gateway.service"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+    return {"gespeichert": name}
+
+
 # ---------- Hermes ----------
 
 ANWEISUNG = ("Du bist Jarvis, Helens persönlicher Sprach-Assistent für ihre Affiliate-Webseiten. "
@@ -285,6 +320,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ImportError:
                     stimme = False
                 self._json(200, {"hermes": hermes_online(env), "lulu": lulu_bereit(), "stimme": stimme,
+                                 "gesetzt": {k: bool(env.get(k)) for k in SCHLUESSEL_REGELN},
                                  "github": bool(os.environ.get("GITHUB_TOKEN")),
                                  "nutzer": self.headers.get("Tailscale-User-Name", "")})
             elif pfad == "/api/beitraege":
@@ -360,6 +396,9 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, subprocess.SubprocessError) as e:
                     raise lulu.Fehler(f"Update konnte nicht starten ({type(e).__name__}).") from None
                 self._json(200, {"ok": True, "hinweis": "Update läuft – in etwa 30 Sekunden neu laden."})
+                return
+            if pfad == "/api/schluessel":
+                self._json(200, schluessel_speichern(str(daten.get("name", "")), str(daten.get("wert", ""))))
                 return
             if pfad == "/api/neu":
                 self._json(200, {"gespraech": neues_gespraech()})
