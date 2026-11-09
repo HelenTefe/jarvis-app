@@ -35,6 +35,13 @@ else
   echo "   Hinweis: uv nicht gefunden – die App nutzt die iPhone-Stimme."
 fi
 
+echo "1c/4 Lulu-Skill für Hermes installieren …"
+SKILL_QUELLE="$(cd "$(dirname "$0")" && pwd)/skill/lulu"
+if [ -d "$SKILL_QUELLE" ]; then
+  mkdir -p "$HOME/.hermes/skills/lulu"
+  cp -r "$SKILL_QUELLE"/. "$HOME/.hermes/skills/lulu"/
+fi
+
 echo "2/4 Hermes-Schnittstelle (nur lokal) einschalten …"
 touch "$ENV"
 grep -q '^API_SERVER_ENABLED=' "$ENV" || echo 'API_SERVER_ENABLED=true' >> "$ENV"
