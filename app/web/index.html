@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvis</title>
-<meta name="theme-color" content="#0D1220">
+<meta name="theme-color" content="#06080F">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,326 +14,359 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=Inter:wght@400;500;600&display=swap">
 <style>
 :root{
-  --bg:#0D1220; --flaeche:#151C2E; --flaeche2:#1C2438; --rand:#263049;
-  --text:#E8ECF5; --leise:#93A0BC; --gold:#F5B045; --gold-hell:#FFD08A; --gold-dunkel:#B07418;
+  --nacht:#06080F; --flaeche:#11151F; --flaeche2:#181D2A; --rand:#232A3B;
+  --text:#EEF1F7; --leise:#8C96AD; --gold:#F5B045; --gold-hell:#FFD58F;
   --gruen:#4CC38A; --rot:#F06A6A; --auf-gold:#1A1206;
-  --radius:18px;
+  --oben:env(safe-area-inset-top); --unten:env(safe-area-inset-bottom);
 }
-*{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
-body{min-height:100dvh;padding:calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--nacht);color:var(--text);font-family:Inter,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
 button{font-family:inherit;color:inherit}
-button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-a{color:var(--gold)}
-.leise{color:var(--leise)}
-.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
-h1,h2{font-family:Sora,Inter,sans-serif;margin:0}
-h2{font-weight:500;font-size:15px}
+button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.versteckt{display:none !important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
-.rahmen{max-width:1180px;margin:0 auto;display:grid;gap:20px}
-@media (min-width:900px){.rahmen{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:start}.kopf{grid-column:1/-1}}
+/* Hintergrund: sanftes Leuchten */
+.himmel{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(60% 45% at 50% 42%,rgba(245,176,69,.10),transparent 70%),radial-gradient(80% 60% at 50% 110%,rgba(90,70,200,.10),transparent 70%),var(--nacht)}
 
-.kopf{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.kopf h1{font-weight:600;font-size:22px}
-.kopf .unter{font-size:12.5px;margin-top:2px}
-.pille{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--rand);border-radius:999px;font-size:12px;white-space:nowrap}
-.punkt{width:8px;height:8px;border-radius:50%;background:var(--leise)}
-.punkt.an{background:var(--gruen)} .punkt.aus{background:var(--rot)}
+.buehne{position:relative;height:100dvh;display:flex;flex-direction:column;align-items:center;
+  padding:calc(var(--oben) + 14px) 20px calc(var(--unten) + 18px)}
 
-.karte{background:var(--flaeche);border:1px solid var(--rand);border-radius:var(--radius);padding:16px}
-.spalte{display:flex;flex-direction:column;gap:16px;min-width:0}
+.kopfzeile{width:100%;max-width:560px;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--leise)}
+.marke{font-family:Sora,sans-serif;font-weight:500;letter-spacing:.32em;font-size:12px;color:var(--leise)}
+.status{display:inline-flex;align-items:center;gap:7px}
+.punkt{width:7px;height:7px;border-radius:50%;background:var(--leise)}
+.punkt.an{background:var(--gruen);box-shadow:0 0 10px var(--gruen)} .punkt.aus{background:var(--rot)}
+.symbolknopf{width:40px;height:40px;border-radius:50%;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;color:var(--leise);cursor:pointer}
+.symbolknopf:active{background:var(--flaeche)}
 
-/* Sprach-Kugel */
-.buehne{display:flex;flex-direction:column;align-items:center;gap:14px;padding:12px 0 4px}
-.kugel{width:132px;height:132px;border-radius:50%;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;
-  background:var(--flaeche2);color:var(--gold);box-shadow:0 0 0 10px var(--flaeche),0 0 0 22px #111829;transition:transform .15s ease,box-shadow .3s ease;-webkit-tap-highlight-color:transparent}
-.kugel:active{transform:scale(.97)}
-.kugel.hoert{background:radial-gradient(circle at 35% 35%,var(--gold-hell),var(--gold) 60%,var(--gold-dunkel));color:var(--auf-gold);box-shadow:0 0 0 10px #3A2E12,0 0 0 22px #241E10;animation:puls 1.6s ease-in-out infinite}
-.kugel.denkt{animation:denk 1.2s linear infinite}
-@keyframes puls{50%{box-shadow:0 0 0 14px #3A2E12,0 0 0 30px #1d180d}}
-@keyframes denk{0%{box-shadow:0 0 0 10px var(--flaeche),0 0 0 22px #111829}50%{box-shadow:0 0 0 10px #2a2414,0 0 0 22px #181a1f}100%{box-shadow:0 0 0 10px var(--flaeche),0 0 0 22px #111829}}
-@media (prefers-reduced-motion:reduce){.kugel.hoert,.kugel.denkt{animation:none}}
-.hinweis{font-size:13.5px;text-align:center;min-height:20px;max-width:34ch}
-.hinweis.aktiv{color:var(--gold)}
+/* Die Kugel */
+.mitte{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;width:100%;max-width:560px;min-height:0}
+.mitte.antwort .kugel{width:min(40vw,150px)}
+.kugel{position:relative;width:min(62vw,250px);aspect-ratio:1;border:0;padding:0;border-radius:50%;background:transparent;cursor:pointer;
+  transform:scale(var(--pegel,1));transition:transform .12s ease-out,width .35s ease}
+.kugel .blob{position:absolute;inset:0;border-radius:50%;filter:blur(18px);opacity:.85;mix-blend-mode:screen}
+.kugel .b1{background:radial-gradient(circle at 35% 35%,#FFD58F,#F5B045 45%,transparent 70%);animation:kreisen 9s linear infinite}
+.kugel .b2{background:radial-gradient(circle at 70% 40%,#FF8A5B,transparent 60%);animation:kreisen 13s linear infinite reverse}
+.kugel .b3{background:radial-gradient(circle at 45% 75%,#8B6CFF,transparent 58%);animation:kreisen 11s linear infinite;opacity:.6}
+.kugel .kern{position:absolute;inset:16%;border-radius:50%;
+  background:radial-gradient(circle at 38% 32%,rgba(255,255,255,.85),rgba(255,213,143,.55) 22%,rgba(245,176,69,.35) 48%,rgba(20,14,6,.0) 72%);
+  box-shadow:inset 0 0 40px rgba(255,255,255,.08)}
+.kugel::after{content:"";position:absolute;inset:-14%;border-radius:50%;border:1px solid rgba(245,176,69,.18);opacity:0;transition:opacity .3s}
+@keyframes kreisen{from{transform:rotate(0) scale(1)}50%{transform:rotate(180deg) scale(1.06)}to{transform:rotate(360deg) scale(1)}}
+@keyframes atmen{50%{transform:scale(1.04)}}
+.kugel.ruhe .blob{animation-duration:16s,22s,18s}
+.kugel.ruhe{animation:atmen 5s ease-in-out infinite}
+.kugel.hoert::after{opacity:1;animation:welle 1.4s ease-out infinite}
+.kugel.hoert .b3{opacity:.9}
+.kugel.denkt .blob{animation-duration:2.4s,3s,2.7s}
+.kugel.denkt .kern{animation:atmen 1.2s ease-in-out infinite}
+@keyframes welle{from{transform:scale(.92);opacity:.9}to{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.kugel,.kugel *,.kugel::after{animation:none !important}}
 
-.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
-.chips::-webkit-scrollbar{display:none}
-.chip{flex:none;border:1px solid var(--rand);background:transparent;border-radius:999px;padding:9px 14px;font-size:13px;cursor:pointer}
-.chip:active{background:var(--flaeche2)}
+.untertitel{min-height:5.2em;max-height:30vh;overflow-y:auto;text-align:center;font-family:Sora,sans-serif;font-weight:300;font-size:clamp(19px,5.2vw,24px);line-height:1.38;
+  padding:0 6px;color:var(--text);overflow-wrap:anywhere;scrollbar-width:none}
+.untertitel::-webkit-scrollbar{display:none}
+.untertitel.leise{color:var(--leise)}
+.untertitel .du{color:var(--leise);font-size:.8em;display:block;margin-bottom:6px}
+.untertitel b{font-weight:500;color:var(--gold-hell)}
 
-.eingabe{display:flex;gap:8px;align-items:flex-end}
-.eingabe textarea{flex:1;min-width:0;resize:none;border:1px solid var(--rand);background:var(--flaeche);color:var(--text);border-radius:14px;padding:12px 14px;font:inherit;font-size:16px;line-height:1.35;max-height:140px}
+/* Unten */
+.fuss{width:100%;max-width:560px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.vorschlaege{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.vorschlag{border:1px solid var(--rand);background:rgba(17,21,31,.6);border-radius:999px;padding:9px 14px;font-size:13.5px;cursor:pointer;color:var(--text)}
+.vorschlag:active{background:var(--flaeche2)}
+.leiste{width:100%;display:flex;align-items:center;justify-content:space-between}
+.wartet{display:inline-flex;align-items:center;gap:8px;border:0;background:rgba(17,21,31,.75);border:1px solid var(--rand);border-radius:999px;padding:10px 16px;font-size:14px;cursor:pointer}
+.wartet .zahl{min-width:22px;height:22px;border-radius:11px;background:var(--gold);color:var(--auf-gold);font-weight:600;font-size:12.5px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+.wartet.ruhig .zahl{background:var(--rand);color:var(--leise)}
+
+/* Tippen-Feld */
+.tippen{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(var(--unten) + 12px);background:rgba(6,8,15,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;gap:8px;align-items:flex-end;border-top:1px solid var(--rand);z-index:20}
+.tippen textarea{flex:1;min-width:0;resize:none;border:1px solid var(--rand);background:var(--flaeche);color:var(--text);border-radius:14px;padding:12px 14px;font:inherit;font-size:16px;line-height:1.35;max-height:140px}
 .senden{flex:none;width:46px;height:46px;border-radius:12px;border:0;background:var(--gold);color:var(--auf-gold);display:flex;align-items:center;justify-content:center;cursor:pointer}
-.senden:disabled{opacity:.45}
 
-/* Gespräch */
-.verlauf{display:flex;flex-direction:column;gap:10px}
-.nachricht{border-radius:16px;padding:12px 14px;font-size:15px;line-height:1.5;overflow-wrap:anywhere}
-.nachricht.du{align-self:flex-end;background:var(--flaeche2);max-width:88%}
-.nachricht.jarvis{background:var(--flaeche);border:1px solid var(--rand)}
-.nachricht .wer{display:block;font-size:11px;letter-spacing:.04em;color:var(--leise);margin-bottom:4px}
-.nachricht p{margin:0 0 .5em}.nachricht p:last-child{margin:0}
-.nachricht ul{margin:.2em 0 .5em;padding-left:1.2em}
-.nachricht code{font-family:"JetBrains Mono",monospace;font-size:.9em;background:#0f1526;padding:1px 5px;border-radius:5px}
-.nachricht.fehler{border-color:#5a2a2a}
-.leer{font-size:14px;text-align:center;padding:8px 0}
-.zeile-aktionen{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.schalter{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--leise);background:none;border:0;cursor:pointer;padding:6px 0}
-.schalter .knopf{width:34px;height:20px;border-radius:999px;background:var(--rand);position:relative;transition:background .2s}
-.schalter .knopf::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--text);transition:transform .2s}
-.schalter[aria-checked=true] .knopf{background:var(--gold)}
-.schalter[aria-checked=true] .knopf::after{transform:translateX(14px);background:var(--auf-gold)}
-.textknopf{background:none;border:0;color:var(--leise);font-size:13px;cursor:pointer;padding:6px 0}
+/* Blatt von unten */
+.schleier{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .25s;z-index:30}
+.schleier.offen{opacity:1;pointer-events:auto}
+.blatt{position:fixed;left:0;right:0;bottom:0;max-height:86dvh;background:var(--flaeche);border-radius:22px 22px 0 0;border-top:1px solid var(--rand);
+  transform:translateY(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1);z-index:31;display:flex;flex-direction:column;max-width:640px;margin:0 auto}
+.blatt.offen{transform:translateY(0)}
+.griff{width:40px;height:5px;border-radius:3px;background:var(--rand);margin:10px auto 4px}
+.blatt-kopf{display:flex;justify-content:space-between;align-items:center;padding:6px 18px 10px}
+.blatt-kopf h2{font-family:Sora,sans-serif;font-weight:500;font-size:17px;margin:0}
+.blatt-inhalt{overflow-y:auto;padding:0 16px calc(var(--unten) + 20px);display:flex;flex-direction:column;gap:12px}
+.abschnitt{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--leise);margin:8px 2px 0}
 
-/* Freigaben */
-.abschnitt-kopf{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.zaehler{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--gold)}
-.beitrag{background:var(--flaeche);border:1px solid var(--rand);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
-.beitrag-kopf{display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px}
-.plattform{font-weight:600;display:inline-flex;align-items:center;gap:6px}
-.plattform .nr{font-family:"JetBrains Mono",monospace;color:var(--leise);font-weight:400}
-.beitrag-text{font-size:14px;line-height:1.45;color:#C9D1E3;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.beitrag{background:var(--flaeche2);border:1px solid var(--rand);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.beitrag-kopf{display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px;color:var(--leise)}
+.beitrag-kopf b{color:var(--text);font-weight:600}
+.beitrag-text{font-size:14.5px;line-height:1.45;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
 .beitrag-text.offen{-webkit-line-clamp:unset;display:block}
 .warnung{font-size:12px;color:var(--rot)}
+.beitrag a{font-size:12px;color:var(--leise)}
 .knoepfe{display:flex;gap:8px}
-.knoepfe button{flex:1;height:44px;border-radius:10px;font-size:14px;cursor:pointer}
+.knoepfe button{flex:1;height:46px;border-radius:12px;font-size:15px;cursor:pointer}
 .ja{border:0;background:var(--gold);color:var(--auf-gold);font-weight:600}
 .ja.sicher{background:var(--gruen);color:#06140d}
 .nein{border:1px solid var(--rand);background:transparent}
 .knoepfe button:disabled{opacity:.5}
+.leer{font-size:14px;color:var(--leise);text-align:center;padding:14px;background:var(--flaeche2);border-radius:14px}
 
-/* Zahlen */
 .zahlen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.zahl{background:var(--flaeche);border:1px solid var(--rand);border-radius:14px;padding:12px 8px;text-align:center;display:flex;flex-direction:column;gap:3px;min-width:0}
-.zahl .wert{font-family:"JetBrains Mono",monospace;font-size:17px;font-variant-numeric:tabular-nums}
-.zahl .name{font-size:11px;color:var(--leise)}
-.balken{height:4px;border-radius:2px;background:var(--rand);overflow:hidden;margin-top:4px}
+.kachel{background:var(--flaeche2);border:1px solid var(--rand);border-radius:14px;padding:12px 6px;text-align:center;display:flex;flex-direction:column;gap:3px;min-width:0}
+.kachel .wert{font-family:Sora,sans-serif;font-size:17px;font-variant-numeric:tabular-nums}
+.kachel .name{font-size:11px;color:var(--leise)}
+.balken{height:4px;border-radius:2px;background:var(--rand);overflow:hidden;margin:4px 8px 0}
 .balken i{display:block;height:100%;background:var(--gold);width:0}
 
-.einrichten{font-size:13.5px;line-height:1.5}
-.einrichten b{color:var(--gold);font-weight:600}
-.versteckt{display:none !important}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.einstellung{display:flex;justify-content:space-between;align-items:center;background:var(--flaeche2);border:1px solid var(--rand);border-radius:14px;padding:12px 14px;font-size:14.5px}
+.schalter{width:46px;height:28px;border-radius:999px;border:0;background:var(--rand);position:relative;cursor:pointer;flex:none}
+.schalter::after{content:"";position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:50%;background:var(--text);transition:transform .2s}
+.schalter[aria-checked=true]{background:var(--gold)}
+.schalter[aria-checked=true]::after{transform:translateX(18px);background:var(--auf-gold)}
+.einrichten{font-size:13.5px;line-height:1.5;background:var(--flaeche2);border:1px solid var(--rand);border-radius:14px;padding:12px 14px}
+.einrichten p{margin:0 0 6px}.einrichten p:last-child{margin:0}
+.einrichten b{color:var(--gold)}
+.textknopf{background:none;border:0;color:var(--leise);font-size:13px;cursor:pointer;padding:8px 0;align-self:center}
 </style>
 </head>
 <body>
-<div class="rahmen">
-  <header class="kopf">
-    <div>
-      <h1>Jarvis</h1>
-      <div class="unter leise" id="begruessung">Hallo Helen</div>
-    </div>
-    <span class="pille" id="status" role="status"><span class="punkt" id="statuspunkt" aria-hidden="true"></span><span id="statustext">verbinde …</span></span>
+<div class="himmel" aria-hidden="true"></div>
+
+<div class="buehne">
+  <header class="kopfzeile">
+    <span class="status" role="status"><span class="punkt" id="punkt" aria-hidden="true"></span><span id="statustext">verbinde</span></span>
+    <span class="marke">JARVIS</span>
+    <button type="button" class="symbolknopf" id="tastatur" aria-label="Schreiben statt sprechen">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg>
+    </button>
   </header>
 
-  <main class="spalte" aria-label="Mit Jarvis sprechen">
-    <section class="buehne">
-      <button type="button" class="kugel" id="kugel" aria-label="Sprechen" aria-pressed="false">
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
-      </button>
-      <p class="hinweis leise" id="hinweis" aria-live="polite">Tippen und sprechen</p>
-    </section>
-
-    <div class="chips" role="group" aria-label="Schnellbefehle">
-      <button class="chip" data-frage="Was wartet auf meine Freigabe?">Was wartet auf mich?</button>
-      <button class="chip" data-frage="Starte den Lulu-Wochenbericht.">Wochenbericht</button>
-      <button class="chip" data-frage="Lass Lulu neue Themen-Ideen suchen.">Neue Themen</button>
-      <button class="chip" data-frage="Wie liefen die letzten Lulu-Aufträge?">Letzte Läufe</button>
-      <button class="chip" data-frage="Was hat Lulu diesen Monat gekostet?">Kosten</button>
-    </div>
-
-    <form class="eingabe" id="formular">
-      <label for="feld" class="sr">Nachricht an Jarvis</label>
-      <textarea id="feld" rows="1" placeholder="Oder hier schreiben …" enterkeyhint="send"></textarea>
-      <button class="senden" id="senden" type="submit" aria-label="Senden">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </button>
-    </form>
-
-    <div class="zeile-aktionen">
-      <button type="button" class="schalter" id="vorlesen" role="switch" aria-checked="true"><span class="knopf" aria-hidden="true"></span>Antworten vorlesen</button>
-      <button type="button" class="textknopf" id="leeren">Verlauf leeren</button>
-    </div>
-
-    <section class="verlauf" id="verlauf" aria-label="Gespräch" aria-live="polite"></section>
+  <main class="mitte">
+    <button type="button" class="kugel ruhe" id="kugel" aria-label="Sprechen" aria-pressed="false">
+      <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="kern"></span>
+    </button>
+    <div class="untertitel leise" id="untertitel" aria-live="polite">Hallo Helen. Tippe auf die Kugel und sprich.</div>
   </main>
 
-  <aside class="spalte" aria-label="Übersicht">
-    <section class="spalte" style="gap:10px" aria-labelledby="t-wartet">
-      <div class="abschnitt-kopf"><h2 id="t-wartet">Wartet auf dich</h2><span class="zaehler" id="anzahl"></span></div>
-      <div id="beitraege" class="spalte" style="gap:10px"></div>
-    </section>
-
-    <section aria-labelledby="t-zahlen" class="spalte" style="gap:10px">
-      <h2 id="t-zahlen">Zahlen</h2>
-      <div class="zahlen">
-        <div class="zahl"><span class="wert" id="z-besucher">–</span><span class="name">Besucher · 30 T.</span></div>
-        <div class="zahl"><span class="wert" id="z-provision">–</span><span class="name">Provision · 30 T.</span></div>
-        <div class="zahl"><span class="wert" id="z-kosten">–</span><span class="name">KI-Kosten · Monat</span><div class="balken" aria-hidden="true"><i id="z-budget"></i></div></div>
-      </div>
-    </section>
-
-    <section class="karte einrichten versteckt" id="einrichten" aria-label="Einrichtung"></section>
-  </aside>
+  <footer class="fuss">
+    <div class="vorschlaege" id="vorschlaege" role="group" aria-label="Vorschläge">
+      <button class="vorschlag" data-frage="Was wartet auf meine Freigabe?">Was wartet auf mich?</button>
+      <button class="vorschlag" data-frage="Wie liefen die letzten Lulu-Aufträge?">Letzte Aufträge</button>
+    </div>
+    <div class="leiste">
+      <button type="button" class="wartet ruhig" id="wartet" aria-haspopup="dialog">
+        <span class="zahl" id="anzahl">0</span><span id="warttext">nichts wartet</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>
+      </button>
+      <button type="button" class="symbolknopf" id="stimmeKnopf" aria-label="Stimme aus" title="Stimme an/aus">
+        <svg id="lautIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path id="wellen" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      </button>
+    </div>
+  </footer>
 </div>
+
+<form class="tippen versteckt" id="tippen">
+  <label for="feld" class="sr">Nachricht an Jarvis</label>
+  <textarea id="feld" rows="1" placeholder="Schreib Jarvis …" enterkeyhint="send"></textarea>
+  <button class="senden" type="submit" aria-label="Senden"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+</form>
+
+<div class="schleier" id="schleier"></div>
+<section class="blatt" id="blatt" role="dialog" aria-modal="true" aria-labelledby="blatt-titel" aria-hidden="true">
+  <div class="griff" aria-hidden="true"></div>
+  <div class="blatt-kopf"><h2 id="blatt-titel">Übersicht</h2><button type="button" class="symbolknopf" id="schliessen" aria-label="Schließen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="blatt-inhalt">
+    <div class="abschnitt">Wartet auf dich</div>
+    <div id="beitraege" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="abschnitt">Zahlen</div>
+    <div class="zahlen">
+      <div class="kachel"><span class="wert" id="z-besucher">–</span><span class="name">Besucher · 30 T.</span></div>
+      <div class="kachel"><span class="wert" id="z-provision">–</span><span class="name">Provision · 30 T.</span></div>
+      <div class="kachel"><span class="wert" id="z-kosten">–</span><span class="name">KI-Kosten · Monat</span><div class="balken" aria-hidden="true"><i id="z-budget"></i></div></div>
+    </div>
+    <div class="einrichten versteckt" id="einrichten"></div>
+    <div class="abschnitt">Einstellungen</div>
+    <div class="einstellung"><span>Jarvis antwortet mit Stimme</span><button type="button" class="schalter" id="stimmeSchalter" role="switch" aria-checked="true" aria-label="Stimme"></button></div>
+    <button type="button" class="textknopf" id="vergessen">Gesprächsverlauf vergessen</button>
+  </div>
+</section>
 
 <script>
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const kugel = $("kugel"), hinweis = $("hinweis"), verlauf = $("verlauf"), feld = $("feld");
+  const kugel = $("kugel"), untertitel = $("untertitel"), feld = $("feld");
   const speicher = {
     lesen(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
     schreiben(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   };
-  let nachrichten = speicher.lesen("jarvis.verlauf", []);
-  let vorlesen = speicher.lesen("jarvis.vorlesen", true);
-  let beschaeftigt = false;
+  let stimmeAn = speicher.lesen("jarvis.stimme", true);
+  let beschaeftigt = false, serverStimme = false;
 
-  // ---------- Hilfen ----------
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  function markdown(text) {
-    const zeilen = esc(text).split(/\n/);
-    let html = "", liste = false, absatz = [];
-    const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
-    const absatzEnde = () => { if (absatz.length) { html += "<p>" + inline(absatz.join("<br>")) + "</p>"; absatz = []; } };
-    for (const z of zeilen) {
-      const m = z.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
-      if (m) { absatzEnde(); if (!liste) { html += "<ul>"; liste = true; } html += "<li>" + inline(m[1]) + "</li>"; continue; }
-      if (liste) { html += "</ul>"; liste = false; }
-      if (!z.trim()) absatzEnde(); else absatz.push(z.replace(/^#+\s*/, ""));
-    }
-    absatzEnde(); if (liste) html += "</ul>";
-    return html;
-  }
-  async function api(pfad, daten) {
+  const huebsch = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "$1").replace(/^\s*[-*•]\s+/gm, "· ").replace(/^#+\s*/gm, "").replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
+  const zahl = (n, d = 0) => Number(n || 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+  async function api(pfad, daten, roh) {
     const opt = daten === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" }, body: JSON.stringify(daten) };
     const a = await fetch(pfad, opt);
+    if (roh && a.ok) return a;
     let j = {}; try { j = await a.json(); } catch {}
     if (!a.ok) throw new Error(j.fehler || "Fehler " + a.status);
     return j;
   }
-  const zahl = (n, d = 0) => Number(n || 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-  // ---------- Begrüßung ----------
-  const h = new Date().getHours();
-  $("begruessung").textContent = h < 11 ? "Guten Morgen, Helen" : h < 18 ? "Hallo Helen" : "Guten Abend, Helen";
-
-  // ---------- Verlauf ----------
-  function zeichneVerlauf() {
-    verlauf.innerHTML = "";
-    if (!nachrichten.length) {
-      verlauf.innerHTML = '<p class="leer leise">Frag mich etwas – zum Beispiel „Was wartet auf mich?“</p>';
-      return;
-    }
-    for (const n of nachrichten.slice(-12)) {
-      const el = document.createElement("div");
-      el.className = "nachricht " + (n.wer === "du" ? "du" : "jarvis") + (n.fehler ? " fehler" : "");
-      el.innerHTML = (n.wer === "du" ? "" : '<span class="wer">JARVIS · ' + esc(n.zeit || "") + "</span>") + markdown(n.text);
-      verlauf.appendChild(el);
-    }
+  // ---------- Anzeige ----------
+  function zustand(z) {
+    for (const k of ["ruhe", "hoert", "denkt", "spricht"]) kugel.classList.toggle(k, k === z);
+    kugel.setAttribute("aria-pressed", String(z === "hoert"));
+    kugel.setAttribute("aria-label", z === "hoert" ? "Zuhören beenden" : z === "spricht" ? "Jarvis unterbrechen" : "Sprechen");
+    if (z !== "spricht") kugel.style.setProperty("--pegel", 1);
   }
-  function merke(n) { nachrichten.push(n); nachrichten = nachrichten.slice(-40); speicher.schreiben("jarvis.verlauf", nachrichten); zeichneVerlauf(); }
-  $("leeren").onclick = () => { nachrichten = []; speicher.schreiben("jarvis.verlauf", []); zeichneVerlauf(); };
+  function zeige(html, leise) {
+    untertitel.innerHTML = html; untertitel.classList.toggle("leise", !!leise); untertitel.scrollTop = 0;
+    document.querySelector(".mitte").classList.toggle("antwort", untertitel.textContent.length > 140);
+  }
 
-  // ---------- Vorlesen ----------
-  function setzeVorlesen(an) { vorlesen = an; $("vorlesen").setAttribute("aria-checked", String(an)); speicher.schreiben("jarvis.vorlesen", an); if (!an) try { speechSynthesis.cancel(); } catch {} }
-  $("vorlesen").onclick = () => setzeVorlesen(!vorlesen);
-  setzeVorlesen(vorlesen);
-  function sprich(text) {
-    if (!vorlesen || !("speechSynthesis" in window)) return;
-    const rein = text.replace(/[*`#_>]/g, "").replace(/https?:\/\/\S+/g, "Link").slice(0, 1200);
+  // ---------- Stimme ----------
+  let ctx = null, quelle = null, pegelUhr = null;
+  function audioWecken() { // muss direkt im Antippen passieren (iPhone)
     try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(rein); u.lang = "de-DE"; u.rate = 1.03;
-      const stimme = speechSynthesis.getVoices().find((v) => v.lang && v.lang.startsWith("de"));
-      if (stimme) u.voice = stimme;
-      speechSynthesis.speak(u);
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+      const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0);
     } catch {}
+    try { if ("speechSynthesis" in window && !speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
   }
+  function verstummen() {
+    try { if (quelle) { quelle.onended = null; quelle.stop(); } } catch {}
+    quelle = null; clearInterval(pegelUhr);
+    try { speechSynthesis.cancel(); } catch {}
+  }
+  async function sprich(text) {
+    if (!stimmeAn) return;
+    verstummen();
+    if (serverStimme && ctx) {
+      try {
+        const a = await api("/api/sprechen", { text }, true);
+        const puffer = await ctx.decodeAudioData(await a.arrayBuffer());
+        const s = ctx.createBufferSource(), an = ctx.createAnalyser(); an.fftSize = 256;
+        s.buffer = puffer; s.connect(an); an.connect(ctx.destination);
+        const werte = new Uint8Array(an.frequencyBinCount);
+        pegelUhr = setInterval(() => { an.getByteFrequencyData(werte); let m = 0; for (const v of werte) m += v; kugel.style.setProperty("--pegel", (1 + Math.min(.14, m / werte.length / 900)).toFixed(3)); }, 60);
+        s.onended = () => { clearInterval(pegelUhr); quelle = null; if (!beschaeftigt) zustand("ruhe"); };
+        quelle = s; zustand("spricht"); s.start(0);
+        return;
+      } catch {}
+    }
+    if ("speechSynthesis" in window) { // Ersatz: iPhone-Stimme
+      const u = new SpeechSynthesisUtterance(text.replace(/[*`#_>]/g, "").replace(/https?:\/\/\S+/g, "Link").slice(0, 1200));
+      u.lang = "de-DE"; const v = speechSynthesis.getVoices().find((x) => x.lang && x.lang.startsWith("de")); if (v) u.voice = v;
+      u.onend = () => { if (!beschaeftigt) zustand("ruhe"); };
+      zustand("spricht"); speechSynthesis.speak(u);
+    }
+  }
+  function setzeStimme(an) {
+    stimmeAn = an; speicher.schreiben("jarvis.stimme", an);
+    $("stimmeSchalter").setAttribute("aria-checked", String(an));
+    $("wellen").style.display = an ? "" : "none";
+    $("stimmeKnopf").setAttribute("aria-label", an ? "Stimme aus" : "Stimme an");
+    if (!an) { verstummen(); if (!beschaeftigt) zustand("ruhe"); }
+  }
+  $("stimmeKnopf").onclick = () => { audioWecken(); setzeStimme(!stimmeAn); };
+  $("stimmeSchalter").onclick = () => { audioWecken(); setzeStimme(!stimmeAn); };
+  setzeStimme(stimmeAn);
 
   // ---------- Fragen ----------
-  function zustand(z, text) {
-    kugel.classList.toggle("hoert", z === "hoert");
-    kugel.classList.toggle("denkt", z === "denkt");
-    kugel.setAttribute("aria-pressed", String(z === "hoert"));
-    kugel.setAttribute("aria-label", z === "hoert" ? "Zuhören beenden" : "Sprechen");
-    hinweis.textContent = text;
-    hinweis.classList.toggle("aktiv", z !== "ruhe");
-  }
   async function frage(text) {
     text = (text || "").trim();
     if (!text || beschaeftigt) return;
-    beschaeftigt = true; $("senden").disabled = true;
-    merke({ wer: "du", text });
-    zustand("denkt", "Jarvis denkt …");
+    beschaeftigt = true; verstummen();
+    zeige('<span class="du">„' + esc(text) + '“</span>Einen Moment …', true);
+    zustand("denkt");
     try {
       const a = await api("/api/chat", { text });
-      const zeit = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-      merke({ wer: "jarvis", text: a.antwort, zeit });
+      zeige('<span class="du">„' + esc(text) + '“</span>' + huebsch(a.antwort));
+      beschaeftigt = false;
+      zustand("ruhe");
       sprich(a.antwort);
       if ((a.werkzeuge || []).length) setTimeout(laden, 800);
     } catch (e) {
-      merke({ wer: "jarvis", text: "Das hat nicht geklappt: " + e.message, fehler: true });
-    } finally {
-      beschaeftigt = false; $("senden").disabled = false;
-      zustand("ruhe", "Tippen und sprechen");
+      beschaeftigt = false; zustand("ruhe");
+      zeige("Das hat nicht geklappt: " + esc(e.message));
     }
   }
-  $("formular").onsubmit = (e) => { e.preventDefault(); const t = feld.value; feld.value = ""; feld.style.height = ""; frage(t); };
-  feld.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("formular").requestSubmit(); } });
-  feld.addEventListener("input", () => { feld.style.height = "auto"; feld.style.height = Math.min(feld.scrollHeight, 140) + "px"; });
-  document.querySelectorAll(".chip").forEach((c) => (c.onclick = () => frage(c.dataset.frage)));
+  document.querySelectorAll(".vorschlag").forEach((b) => (b.onclick = () => { audioWecken(); frage(b.dataset.frage); }));
 
-  // ---------- Spracheingabe ----------
+  // ---------- Sprechen ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let erkennung = null, gehoert = "";
-  function zuhoeren() {
+  kugel.onclick = () => {
+    audioWecken();
+    if (kugel.classList.contains("spricht")) { verstummen(); zustand("ruhe"); return; }
     if (beschaeftigt) return;
-    try { speechSynthesis.cancel(); } catch {}
-    if (!SR) { zustand("ruhe", "Spracheingabe geht in diesem Browser nicht – bitte unten schreiben oder das Mikrofon der Tastatur nutzen."); feld.focus(); return; }
+    if (!SR) { zeige("Spracheingabe geht in diesem Browser nicht. Tippe oben rechts auf die Tastatur.", true); return; }
     if (erkennung) { erkennung.stop(); return; }
     erkennung = new SR(); erkennung.lang = "de-DE"; erkennung.interimResults = true; erkennung.continuous = false;
     gehoert = "";
-    erkennung.onresult = (ev) => {
-      gehoert = Array.from(ev.results).map((r) => r[0].transcript).join(" ");
-      hinweis.textContent = "„" + gehoert + "“";
-    };
+    erkennung.onresult = (ev) => { gehoert = Array.from(ev.results).map((r) => r[0].transcript).join(" "); zeige("„" + esc(gehoert) + "“"); };
     erkennung.onerror = (ev) => {
-      const text = ev.error === "not-allowed" || ev.error === "service-not-allowed" ? "Mikrofon ist nicht erlaubt – bitte in den Einstellungen freigeben." : ev.error === "no-speech" ? "Ich habe nichts gehört." : "Spracheingabe gestört (" + ev.error + ").";
-      zustand("ruhe", text);
+      zeige(ev.error === "not-allowed" || ev.error === "service-not-allowed" ? "Bitte erlaube Mikrofon und Spracherkennung für Safari (Einstellungen → Safari)." : ev.error === "no-speech" ? "Ich habe nichts gehört. Tippe nochmal." : "Spracheingabe gestört (" + esc(ev.error) + ").", true);
     };
-    erkennung.onend = () => { erkennung = null; if (gehoert.trim()) frage(gehoert); else if (!beschaeftigt && kugel.classList.contains("hoert")) zustand("ruhe", "Tippen und sprechen"); };
-    zustand("hoert", "Ich höre zu …");
-    try { erkennung.start(); } catch { erkennung = null; zustand("ruhe", "Spracheingabe konnte nicht starten."); }
+    erkennung.onend = () => { erkennung = null; if (gehoert.trim()) frage(gehoert); else if (!beschaeftigt) zustand("ruhe"); };
+    zustand("hoert"); zeige("Ich höre zu …", true);
+    try { erkennung.start(); } catch { erkennung = null; zustand("ruhe"); zeige("Spracheingabe konnte nicht starten.", true); }
+  };
+
+  // ---------- Tippen ----------
+  $("tastatur").onclick = () => { const t = $("tippen"); t.classList.toggle("versteckt"); if (!t.classList.contains("versteckt")) feld.focus(); };
+  $("tippen").onsubmit = (e) => { e.preventDefault(); audioWecken(); const t = feld.value; feld.value = ""; feld.style.height = ""; $("tippen").classList.add("versteckt"); feld.blur(); frage(t); };
+  feld.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("tippen").requestSubmit(); } });
+  feld.addEventListener("input", () => { feld.style.height = "auto"; feld.style.height = Math.min(feld.scrollHeight, 140) + "px"; });
+
+  // ---------- Blatt ----------
+  function blatt(offen) {
+    $("blatt").classList.toggle("offen", offen); $("schleier").classList.toggle("offen", offen);
+    $("blatt").setAttribute("aria-hidden", String(!offen));
+    if (offen) { laden(); $("schliessen").focus(); } else $("wartet").focus();
   }
-  kugel.onclick = zuhoeren;
+  $("wartet").onclick = () => blatt(true);
+  $("schliessen").onclick = () => blatt(false);
+  $("schleier").onclick = () => blatt(false);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("blatt").classList.contains("offen")) blatt(false); });
+  let startY = null;
+  $("blatt").addEventListener("touchstart", (e) => { if ($("blatt").querySelector(".blatt-inhalt").scrollTop <= 0) startY = e.touches[0].clientY; }, { passive: true });
+  $("blatt").addEventListener("touchend", (e) => { if (startY !== null && e.changedTouches[0].clientY - startY > 80) blatt(false); startY = null; });
+  $("vergessen").onclick = async () => {
+    try { await api("/api/neu", {}); blatt(false); zeige("Neues Gespräch. Wie kann ich helfen?", true); }
+    catch (e) { zeige("Konnte nicht neu starten: " + esc(e.message)); }
+  };
 
   // ---------- Freigaben ----------
   const PLATTFORM = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
-  function zeichneBeitraege(liste, luluBereit) {
-    const box = $("beitraege");
-    box.innerHTML = "";
-    $("anzahl").textContent = liste.length ? liste.length + " offen" : "";
-    $("begruessung").textContent = $("begruessung").textContent.split(" · ")[0] + (liste.length ? " · " + liste.length + (liste.length === 1 ? " Ding wartet" : " Dinge warten") + " auf dich" : "");
-    if (!luluBereit) { box.innerHTML = '<p class="leer leise karte">Lulu ist noch nicht verbunden.</p>'; return; }
-    if (!liste.length) { box.innerHTML = '<p class="leer leise karte">Alles erledigt – nichts wartet auf dich.</p>'; return; }
+  function zeichneBeitraege(liste, bereit) {
+    const box = $("beitraege"); box.innerHTML = "";
+    const n = liste.length;
+    $("anzahl").textContent = n; $("wartet").classList.toggle("ruhig", !n);
+    $("warttext").textContent = !bereit ? "Übersicht" : n ? (n === 1 ? "wartet auf dich" : "warten auf dich") : "nichts wartet";
+    if (!bereit) { box.innerHTML = '<div class="leer">Lulu ist noch nicht verbunden.</div>'; return; }
+    if (!n) { box.innerHTML = '<div class="leer">Alles erledigt – nichts wartet auf dich.</div>'; return; }
     for (const b of liste) {
-      const el = document.createElement("article");
-      el.className = "beitrag";
+      const el = document.createElement("article"); el.className = "beitrag";
       const ohneWerbung = !/(werbung|anzeige|#ad\b)/i.test(b.text || "");
       el.innerHTML =
-        '<div class="beitrag-kopf"><span class="plattform">' + esc(PLATTFORM[b.plattform] || b.plattform) + ' <span class="nr">#' + esc(b.id) + "</span></span>" +
-        '<span class="leise">' + (b.geplant_fuer ? "geplant " + esc(new Date(b.geplant_fuer).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })) : "sofort nach Freigabe") + "</span></div>" +
-        '<div class="beitrag-text" tabindex="0" title="Antippen für ganzen Text">' + esc(b.text) + "</div>" +
-        (ohneWerbung ? '<div class="warnung">Achtung: nicht als „Werbung“ gekennzeichnet.</div>' : "") +
-        (b.link ? '<a class="leise" style="font-size:12px" href="' + esc(b.link) + '" target="_blank" rel="noopener">' + esc(b.link.replace(/^https?:\/\//, "").slice(0, 60)) + "</a>" : "") +
+        '<div class="beitrag-kopf"><span><b>' + esc(PLATTFORM[b.plattform] || b.plattform) + "</b> · #" + esc(b.id) + "</span><span>" +
+        (b.geplant_fuer ? esc(new Date(b.geplant_fuer).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })) : "sofort") + "</span></div>" +
+        '<div class="beitrag-text" tabindex="0">' + esc(b.text) + "</div>" +
+        (ohneWerbung ? '<div class="warnung">Nicht als „Werbung“ gekennzeichnet.</div>' : "") +
+        (b.link ? '<a href="' + esc(b.link) + '" target="_blank" rel="noopener">' + esc(b.link.replace(/^https?:\/\//, "").slice(0, 60)) + "</a>" : "") +
         '<div class="knoepfe"><button type="button" class="ja">Freigeben</button><button type="button" class="nein">Ablehnen</button></div>';
-      const textEl = el.querySelector(".beitrag-text");
-      textEl.onclick = () => textEl.classList.toggle("offen");
+      const t = el.querySelector(".beitrag-text"); t.onclick = () => t.classList.toggle("offen");
       const ja = el.querySelector(".ja"), nein = el.querySelector(".nein");
       let sicher = false, uhr;
       ja.onclick = async () => {
@@ -344,34 +377,28 @@ h2{font-weight:500;font-size:15px}
       box.appendChild(el);
     }
   }
-  async function entscheide(id, aktion, ...knoepfe) {
-    knoepfe.forEach((k) => (k.disabled = true));
-    try {
-      await api("/api/beitraege/" + id + "/" + aktion, {});
-      merke({ wer: "jarvis", text: "Beitrag #" + id + (aktion === "freigeben" ? " ist freigegeben." : " ist abgelehnt."), zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) });
-    } catch (e) {
-      merke({ wer: "jarvis", text: "Konnte Beitrag #" + id + " nicht ändern: " + e.message, fehler: true });
-    }
+  async function entscheide(id, aktion, ...k) {
+    k.forEach((x) => (x.disabled = true));
+    try { await api("/api/beitraege/" + id + "/" + aktion, {}); }
+    catch (e) { alertText("Beitrag #" + id + ": " + e.message); }
     laden();
   }
+  function alertText(t) { zeige(esc(t)); }
 
-  // ---------- Status & Zahlen ----------
-  function zeigeEinrichtung(s) {
-    const box = $("einrichten");
-    const offen = [];
-    if (!s.hermes) offen.push("<b>Hermes</b> antwortet gerade nicht. Kurz warten oder den Server neu starten.");
-    if (!s.github) offen.push("<b>GitHub-Schlüssel</b> fehlt: in der Hermes-App unter Einstellungen → Keys bei GITHUB_TOKEN eintragen.");
-    if (!s.lulu) offen.push("<b>Lulu-Datenbank</b> fehlt: LULU_SUPABASE_URL und LULU_SUPABASE_KEY in Hermes eintragen.");
-    box.classList.toggle("versteckt", !offen.length);
-    box.innerHTML = offen.length ? "<h2 style='margin-bottom:8px'>Noch einzurichten</h2>" + offen.map((t) => "<p style='margin:0 0 6px'>" + t + "</p>").join("") : "";
-  }
+  // ---------- Status ----------
   async function laden() {
-    let s = { hermes: false, lulu: false, github: false };
+    let s = { hermes: false, lulu: false, github: false, stimme: false };
     try { s = await api("/api/status"); } catch {}
-    $("statuspunkt").className = "punkt " + (s.hermes ? "an" : "aus");
+    serverStimme = !!s.stimme;
+    $("punkt").className = "punkt " + (s.hermes ? "an" : "aus");
     $("statustext").textContent = s.hermes ? "online" : "offline";
-    zeigeEinrichtung(s);
-    try { zeichneBeitraege(s.lulu ? await api("/api/beitraege") : [], s.lulu); } catch (e) { $("beitraege").innerHTML = '<p class="leer leise karte">' + esc(e.message) + "</p>"; }
+    const offen = [];
+    if (!s.hermes) offen.push("<b>Hermes</b> antwortet gerade nicht.");
+    if (!s.github) offen.push("<b>GitHub-Schlüssel</b> fehlt (Hermes → Einstellungen → Keys → GITHUB_TOKEN).");
+    if (!s.lulu) offen.push("<b>Lulu-Datenbank</b> fehlt (LULU_SUPABASE_URL und LULU_SUPABASE_KEY).");
+    $("einrichten").classList.toggle("versteckt", !offen.length);
+    $("einrichten").innerHTML = offen.map((t) => "<p>" + t + "</p>").join("");
+    try { zeichneBeitraege(s.lulu ? await api("/api/beitraege") : [], s.lulu); } catch (e) { $("beitraege").innerHTML = '<div class="leer">' + esc(e.message) + "</div>"; }
     if (s.lulu) {
       try {
         const z = await api("/api/zahlen");
@@ -382,8 +409,8 @@ h2{font-weight:500;font-size:15px}
       } catch {}
     }
   }
-
-  zeichneVerlauf();
+  const h = new Date().getHours();
+  zeige((h < 11 ? "Guten Morgen, Helen." : h < 18 ? "Hallo Helen." : "Guten Abend, Helen.") + "<br>Tippe auf die Kugel und sprich.", true);
   laden();
   setInterval(() => { if (!document.hidden && !beschaeftigt) laden(); }, 60000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) laden(); });
