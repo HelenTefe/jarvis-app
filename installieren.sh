@@ -20,7 +20,7 @@ chmod 700 "$ZIEL"
 
 echo "1b/4 Stimme (Edge TTS) einrichten …"
 UV="$(command -v uv || true)"
-for k in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv" "$HOME/.hermes/bin/uv"; do
+for k in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv" "$HOME/.hermes/bin/uv" "$HOME"/.hermes/tools/uv-*/uv; do
   [ -z "$UV" ] && [ -x "$k" ] && UV="$k"
 done
 PY="/usr/bin/python3"
