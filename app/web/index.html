@@ -132,6 +132,14 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 .einrichten{font-size:13.5px;line-height:1.5;background:var(--flaeche2);border:1px solid var(--rand);border-radius:14px;padding:12px 14px}
 .einrichten p{margin:0 0 6px}.einrichten p:last-child{margin:0}
 .einrichten b{color:var(--gold)}
+.verbindung{background:var(--flaeche2);border:1px solid var(--rand);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.verbindung-kopf{display:flex;justify-content:space-between;align-items:center;font-size:14.5px;gap:8px}
+.verbindung-kopf small{display:block;color:var(--leise);font-size:12px;margin-top:2px}
+.marke-ok{font-size:12.5px;color:var(--gruen);white-space:nowrap}.marke-fehlt{font-size:12.5px;color:var(--gold);white-space:nowrap}
+.verbindung form{display:flex;gap:8px}
+.verbindung input{flex:1;min-width:0;border:1px solid var(--rand);background:var(--nacht);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:16px}
+.verbindung button.speichern{flex:none;border:0;border-radius:10px;background:var(--gold);color:var(--auf-gold);font-weight:600;padding:0 14px;cursor:pointer}
+.verbindung .meldung{font-size:12.5px;color:var(--leise)}
 .textknopf{background:none;border:0;color:var(--leise);font-size:13px;cursor:pointer;padding:8px 0;align-self:center}
 </style>
 </head>
@@ -191,6 +199,8 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
       <div class="kachel"><span class="wert" id="z-kosten">–</span><span class="name">KI-Kosten · Monat</span><div class="balken" aria-hidden="true"><i id="z-budget"></i></div></div>
     </div>
     <div class="einrichten versteckt" id="einrichten"></div>
+    <div class="abschnitt">Verbindungen</div>
+    <div id="verbindungen" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="abschnitt">Einstellungen</div>
     <div class="einstellung"><span>Jarvis antwortet mit Stimme</span><button type="button" class="schalter" id="stimmeSchalter" role="switch" aria-checked="true" aria-label="Stimme"></button></div>
     <button type="button" class="textknopf" id="vergessen">Gesprächsverlauf vergessen</button>
@@ -449,6 +459,40 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
   }
   function alertText(t) { zeige(esc(t)); }
 
+  // ---------- Verbindungen (Schlüssel eintragen) ----------
+  const VERBINDUNGEN = [
+    { name: "GITHUB_TOKEN", titel: "GitHub-Schlüssel", hilfe: "Damit Jarvis Lulus Aufträge starten kann", platz: "github_pat_…" },
+    { name: "LULU_SUPABASE_URL", titel: "Datenbank-Adresse", hilfe: "https://ezcdfpxcwddbublifatj.supabase.co", platz: "https://….supabase.co" },
+    { name: "LULU_SUPABASE_KEY", titel: "Datenbank-Schlüssel", hilfe: "Supabase → lulu-agent → API Keys → secret", platz: "Schlüssel einfügen" },
+  ];
+  let verbindungenGebaut = false;
+  function zeichneVerbindungen(gesetzt) {
+    const box = $("verbindungen");
+    if (!verbindungenGebaut) {
+      verbindungenGebaut = true;
+      for (const v of VERBINDUNGEN) {
+        const el = document.createElement("div"); el.className = "verbindung"; el.dataset.name = v.name;
+        el.innerHTML = '<div class="verbindung-kopf"><span>' + esc(v.titel) + "<small>" + esc(v.hilfe) + '</small></span><span class="status-marke"></span></div>' +
+          '<form><label class="sr" for="v-' + v.name + '">' + esc(v.titel) + '</label><input id="v-' + v.name + '" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="' + esc(v.platz) + '"><button class="speichern" type="submit">Speichern</button></form><div class="meldung" aria-live="polite"></div>';
+        const form = el.querySelector("form"), feldV = el.querySelector("input"), meldung = el.querySelector(".meldung");
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const wert = feldV.value.trim(); if (!wert) return;
+          meldung.textContent = "Speichere …";
+          try { await api("/api/schluessel", { name: v.name, wert }); feldV.value = ""; meldung.textContent = "Gespeichert. Jarvis startet kurz neu."; setTimeout(laden, 6000); }
+          catch (err) { meldung.textContent = err.message; }
+        };
+        box.appendChild(el);
+      }
+    }
+    for (const el of box.children) {
+      const ok = !!(gesetzt || {})[el.dataset.name];
+      const m = el.querySelector(".status-marke");
+      m.className = "status-marke " + (ok ? "marke-ok" : "marke-fehlt");
+      m.textContent = ok ? "✓ eingetragen" : "fehlt";
+    }
+  }
+
   // ---------- Status ----------
   async function laden() {
     let s = { hermes: false, lulu: false, github: false, stimme: false };
@@ -456,10 +500,10 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
     serverStimme = !!s.stimme;
     $("punkt").className = "punkt " + (s.hermes ? "an" : "aus");
     $("statustext").textContent = s.hermes ? "online" : "offline";
+    zeichneVerbindungen(s.gesetzt);
     const offen = [];
     if (!s.hermes) offen.push("<b>Hermes</b> antwortet gerade nicht.");
-    if (!s.github) offen.push("<b>GitHub-Schlüssel</b> fehlt (Hermes → Einstellungen → Keys → GITHUB_TOKEN).");
-    if (!s.lulu) offen.push("<b>Lulu-Datenbank</b> fehlt (LULU_SUPABASE_URL und LULU_SUPABASE_KEY).");
+    if (!s.github || !s.lulu) offen.push("<b>Lulu ist noch nicht ganz verbunden.</b> Trag unten bei „Verbindungen“ die fehlenden Schlüssel ein.");
     $("einrichten").classList.toggle("versteckt", !offen.length);
     $("einrichten").innerHTML = offen.map((t) => "<p>" + t + "</p>").join("");
     try { zeichneBeitraege(s.lulu ? await api("/api/beitraege") : [], s.lulu); } catch (e) { $("beitraege").innerHTML = '<div class="leer">' + esc(e.message) + "</div>"; }
