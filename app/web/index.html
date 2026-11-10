@@ -140,7 +140,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 .verbindung input{flex:1;min-width:0;border:1px solid var(--rand);background:var(--nacht);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:16px}
 .verbindung button.speichern{flex:none;border:0;border-radius:10px;background:var(--gold);color:var(--auf-gold);font-weight:600;padding:0 14px;cursor:pointer}
 .verbindung .meldung{font-size:12.5px;color:var(--leise)}
-.segmente{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--nacht);border:1px solid var(--rand);border-radius:12px;padding:4px}
+.segmente{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;background:var(--nacht);border:1px solid var(--rand);border-radius:12px;padding:4px}
 .segmente button{border:0;background:transparent;border-radius:9px;height:38px;font-size:14px;cursor:pointer;color:var(--leise)}
 .segmente button[aria-checked=true]{background:var(--gold);color:var(--auf-gold);font-weight:600}
 .textknopf{background:none;border:0;color:var(--leise);font-size:13px;cursor:pointer;padding:8px 0;align-self:center}
@@ -207,7 +207,6 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
     <div class="abschnitt">Einstellungen</div>
     <div class="einstellung" style="flex-direction:column;align-items:stretch;gap:10px"><span>Tempo</span>
       <div class="segmente" id="tempo" role="radiogroup" aria-label="Tempo">
-        <button type="button" role="radio" data-tempo="blitz">Blitz</button>
         <button type="button" role="radio" data-tempo="schnell">Schnell</button>
         <button type="button" role="radio" data-tempo="gruendlich">Gründlich</button>
       </div>
@@ -230,7 +229,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
   };
   let stimmeAn = speicher.lesen("jarvis.stimme", true);
   let tempo = speicher.lesen("jarvis.tempo", "schnell");
-  const TEMPO_INFO = { blitz: "Am schnellsten. Gut für kurze Fragen und Befehle.", schnell: "Schnell und trotzdem klug – für den Alltag.", gruendlich: "Langsamer, denkt länger nach – für knifflige Fragen." };
+  const TEMPO_INFO = { schnell: "Antwortet sofort und gibt Aufgaben an Lulu weiter (mit Groq-Schlüssel).", gruendlich: "Alles über Hermes, denkt länger nach – für knifflige Fragen." };
   function setzeTempo(t) {
     tempo = t; speicher.schreiben("jarvis.tempo", t);
     document.querySelectorAll("#tempo button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.tempo === t)));
@@ -367,6 +366,10 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
             ganz += ev.d; rest += ev.d;
             zeige(kopf + huebsch(ganz));
             sätzeAbgeben(false);
+          } else if (ev.t === "weiter") {
+            zustand("denkt");
+            if (!ganz) zeige(kopf + "Ich kümmere mich darum …", true);
+            else { ganz += " "; rest += " "; }
           } else if (ev.t === "werkzeug") {
             werkzeug = true; if (!ganz) zeige(kopf + "Ich frage Lulu …", true);
           } else if (ev.t === "fehler") fehler = ev.d;
@@ -481,6 +484,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 
   // ---------- Verbindungen (Schlüssel eintragen) ----------
   const VERBINDUNGEN = [
+    { name: "GROQ_API_KEY", titel: "Groq-Schlüssel (Tempo)", hilfe: "Für sofortige Antworten – console.groq.com → API Keys", platz: "gsk_…" },
     { name: "GITHUB_TOKEN", titel: "GitHub-Schlüssel", hilfe: "Damit Jarvis Lulus Aufträge starten kann", platz: "github_pat_…" },
     { name: "LULU_SUPABASE_URL", titel: "Datenbank-Adresse", hilfe: "https://ezcdfpxcwddbublifatj.supabase.co", platz: "https://….supabase.co" },
     { name: "LULU_SUPABASE_KEY", titel: "Datenbank-Schlüssel", hilfe: "Supabase → lulu-agent → API Keys → secret", platz: "Schlüssel einfügen" },
