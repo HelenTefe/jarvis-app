@@ -10,6 +10,7 @@ LULU_SUPABASE_KEY) – sie verlassen den Server nie und werden nie an den Browse
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 import time
@@ -164,6 +165,44 @@ def _verlauf_merken(rolle, text):
     with _verlauf_sperre:
         _verlauf.append({"role": rolle, "content": text[:2000]})
         del _verlauf[:-16]
+
+
+AUDIO_ENDUNG = {"audio/mp4": "m4a", "audio/aac": "m4a", "audio/webm": "webm", "audio/ogg": "ogg",
+                "audio/wav": "wav", "audio/mpeg": "mp3"}
+
+
+def hoeren(roh, typ, env):
+    """Wandelt eine Sprachaufnahme mit Groq Whisper in Text um."""
+    schluessel = env.get("GROQ_API_KEY", "")
+    if not schluessel:
+        raise lulu.Fehler("Kein Groq-Schlüssel")
+    endung = AUDIO_ENDUNG.get(typ.split(";")[0].strip().lower(), "m4a")
+    grenze = "jarvis" + secrets.token_hex(12)
+    teile = []
+    for name, wert in (("model", "whisper-large-v3-turbo"), ("language", "de"),
+                       ("response_format", "json"), ("temperature", "0"),
+                       ("prompt", "Jarvis, Lulu, Instagram, Facebook, TikTok, Beitrag, freigeben.")):
+        teile.append(f"--{grenze}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{wert}\r\n".encode())
+    teile.append(f"--{grenze}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sprache.{endung}\"\r\n"
+                 f"Content-Type: {typ.split(';')[0]}\r\n\r\n".encode() + roh + b"\r\n")
+    teile.append(f"--{grenze}--\r\n".encode())
+    req = urllib.request.Request(
+        GROQ_API + "/audio/transcriptions", data=b"".join(teile), method="POST",
+        headers={"Authorization": "Bearer " + schluessel, "User-Agent": "jarvis-app",
+                 "Content-Type": "multipart/form-data; boundary=" + grenze})
+    start = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as a:
+            text = str(json.loads(a.read()).get("text", "")).strip()
+    except urllib.error.HTTPError as e:
+        raise lulu.Fehler(f"Groq-Spracherkennung: HTTP {e.code} {e.read()[:200]!r}") from None
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        raise lulu.Fehler(f"Groq-Spracherkennung nicht erreichbar ({type(e).__name__})") from None
+    sys.stderr.write(f"Hören: {len(roh)//1024} KB in {time.time() - start:.1f}s erkannt\n")
+    # Whisper erfindet bei Stille gern Floskeln – die verwerfen.
+    if re.fullmatch(r"(?i)\W*(untertitel.*|vielen dank\.?|danke\.?|tschüss\.?|amara\.org.*)?\W*", text):
+        return ""
+    return text
 
 
 def direkt_strom(text, env, senden):
@@ -489,6 +528,18 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", "")
         if self.headers.get("X-Jarvis") != "1" or (herkunft and herkunft.split("//", 1)[-1] != host):
             self._json(403, {"fehler": "Abgelehnt"})
+            return
+        if self.path.split("?", 1)[0] == "/api/hoeren":
+            laenge = int(self.headers.get("Content-Length") or 0)
+            if not 0 < laenge <= 15_000_000:
+                self._json(400, {"fehler": "Aufnahme fehlt oder ist zu groß"})
+                return
+            roh = self.rfile.read(laenge)
+            try:
+                self._json(200, {"text": hoeren(roh, self.headers.get("Content-Type", "audio/mp4"), env_laden())})
+            except lulu.Fehler as e:
+                sys.stderr.write(f"{e}\n")
+                self._json(502, {"fehler": str(e)})
             return
         laenge = min(int(self.headers.get("Content-Length") or 0), 20000)
         try:
