@@ -1,11 +1,11 @@
 ---
 name: lulu
 description: Steuert Lulu, Helens Affiliate-Agenten-System – Aufträge starten (Wochenbericht, Themen, Artikel-Entwurf, Social-Posts, Wartung), Läufe und Kosten prüfen, Social-Media-Beiträge zur Freigabe zeigen, freigeben oder ablehnen und das Posten anstoßen.
-version: 1.1.0
+version: 1.2.0
 author: Helen
 platforms: [linux]
 required_environment_variables:
-  - name: GITHUB_TOKEN
+  - name: LULU_GITHUB_TOKEN
     prompt: GitHub-Token (fein-granular, nur Repo Ai-agent-lulu, Actions lesen+schreiben, Inhalte lesen)
     help: https://github.com/settings/personal-access-tokens/new
     required_for: Aufträge starten und Läufe anzeigen
