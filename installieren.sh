@@ -42,6 +42,10 @@ if [ -d "$SKILL_QUELLE" ]; then
   cp -r "$SKILL_QUELLE"/. "$HOME/.hermes/skills/lulu"/
 fi
 
+echo "1d/4 Jarvis schlanker machen (unnötige Werkzeuge nur für die App aus) …"
+hermes tools disable browser vision image_gen tts computer_use code_execution delegation clarify \
+  --platform api_server >/dev/null 2>&1 || echo "   Hinweis: Werkzeuge konnten nicht angepasst werden."
+
 echo "2/4 Hermes-Schnittstelle (nur lokal) einschalten …"
 touch "$ENV"
 grep -q '^API_SERVER_ENABLED=' "$ENV" || echo 'API_SERVER_ENABLED=true' >> "$ENV"
