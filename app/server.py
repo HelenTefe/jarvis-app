@@ -122,7 +122,7 @@ ANWEISUNG = ("Du bist Jarvis, Helens persönlicher Sprach-Assistent für ihre Af
              "um Details. Für Lulu-Aufgaben nutze den Skill 'lulu'.")
 # Tempo-Stufen: welches Modell (über das ChatGPT-Abo) und wie viel Denkzeit.
 TEMPO = {
-    "blitz": {"model": "gpt-5.3-codex-spark", "provider": "openai-codex", "denken": "low"},
+    "blitz": {"model": "gpt-5.4-mini", "provider": "openai-codex", "denken": "low"},
     "schnell": {"model": "gpt-6-luna", "provider": "openai-codex", "denken": "low"},
     "gruendlich": {"model": None, "provider": None, "denken": "medium"},
     "_standard": {"model": None, "provider": None, "denken": "low"},  # Ersatz, wenn ein Modell fehlt
@@ -160,11 +160,15 @@ class _ModellFehlt(Exception):
     pass
 
 
+FEHLERTEXT = re.compile(r"rejected the request|Provider said: HTTP [45]\d\d|Pick another model", re.I)
+
+
 def _hermes_strom(text, env, senden, tempo):
     req = _hermes_anfrage(text, env, True, tempo)
     nebenbei = set()  # Zwischenkommentare (phase=commentary) nicht vorlesen
     status = None
     erstes = time.time()
+    puffer = ""  # die ersten Zeichen halten, um Fehlermeldungen zu erkennen
     try:
         with urllib.request.urlopen(req, timeout=600) as a:
             for roh in a:
@@ -190,6 +194,17 @@ def _hermes_strom(text, env, senden, tempo):
                         if erstes:
                             sys.stderr.write(f"Tempo {tempo}: erstes Wort nach {time.time() - erstes:.1f}s\n")
                             erstes = None
+                        if puffer is not None:
+                            puffer += ev["delta"]
+                            if len(puffer) < 90:
+                                continue
+                            if FEHLERTEXT.search(puffer):
+                                if TEMPO[tempo]["model"]:
+                                    raise _ModellFehlt()
+                                raise lulu.Fehler("ChatGPT hat die Anfrage abgelehnt. Bitte gleich nochmal versuchen.")
+                            senden({"t": "text", "d": puffer})
+                            puffer = None
+                            continue
                         senden({"t": "text", "d": ev["delta"]})
                 elif typ in ("response.completed", "response.failed", "response.cancelled", "response.incomplete"):
                     status = (ev.get("response") or {}).get("status") or typ.rsplit(".", 1)[-1]
@@ -202,6 +217,12 @@ def _hermes_strom(text, env, senden, tempo):
         raise lulu.Fehler(f"Hermes meldet Fehler {e.code}.") from None
     except urllib.error.URLError:
         raise lulu.Fehler("Hermes ist gerade nicht erreichbar.") from None
+    if puffer:
+        if FEHLERTEXT.search(puffer):
+            if TEMPO[tempo]["model"]:
+                raise _ModellFehlt()
+            raise lulu.Fehler("ChatGPT hat die Anfrage abgelehnt. Bitte gleich nochmal versuchen.")
+        senden({"t": "text", "d": puffer})
     senden({"t": "ende", "status": status})
 
 
