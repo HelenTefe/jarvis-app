@@ -389,24 +389,112 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
   document.querySelectorAll(".vorschlag").forEach((b) => (b.onclick = () => { audioWecken(); frage(b.dataset.frage); }));
 
   // ---------- Sprechen ----------
+  // Mit Groq-Schlüssel: Aufnahme + Whisper auf dem Server (zuverlässig, auch lange Sätze).
+  // Ohne: Spracherkennung von Safari als Notlösung.
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let erkennung = null, gehoert = "";
+  let groqDa = false, erkennung = null, gehoert = "", aufnahme = null, mikro = null;
   kugel.onclick = () => {
     audioWecken();
     if (kugel.classList.contains("spricht")) { verstummen(); zustand("ruhe"); return; }
-    if (beschaeftigt) return;
-    if (!SR) { zeige("Spracheingabe geht in diesem Browser nicht. Tippe oben rechts auf die Tastatur.", true); return; }
+    if (aufnahme) { aufnahme.fertig(); return; }
     if (erkennung) { erkennung.stop(); return; }
-    erkennung = new SR(); erkennung.lang = "de-DE"; erkennung.interimResults = true; erkennung.continuous = false;
+    if (beschaeftigt) return;
+    if (groqDa && window.MediaRecorder && navigator.mediaDevices) aufnehmen();
+    else safariHoeren();
+  };
+
+  async function aufnehmen() {
+    zustand("hoert"); zeige("Ich höre zu …", true);
+    try {
+      if (!mikro || !mikro.getAudioTracks().some((t) => t.readyState === "live"))
+        mikro = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (e) {
+      zustand("ruhe");
+      zeige("Bitte erlaube das Mikrofon für Safari (Einstellungen → Safari → Mikrofon).", true); return;
+    }
+    const typ = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+    let rec;
+    try { rec = new MediaRecorder(mikro, typ ? { mimeType: typ } : undefined); }
+    catch { zustand("ruhe"); safariHoeren(); return; }
+    const stuecke = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) stuecke.push(e.data); };
+
+    // Stille erkennen: Pegel messen, nach dem Sprechen 1,3 s Ruhe = fertig.
+    let analyse = null, puffer = null, boden = 0.01, gesprochen = false, letzteStimme = Date.now(), start = Date.now(), uhr = null;
+    try {
+      const q = ctx.createMediaStreamSource(mikro); analyse = ctx.createAnalyser(); analyse.fftSize = 1024;
+      q.connect(analyse); puffer = new Float32Array(analyse.fftSize);
+    } catch {}
+    const ende = (abbrechen) => {
+      if (!aufnahme) return; aufnahme = null; clearInterval(uhr);
+      rec.onstop = () => {
+        // Mikrofon wieder freigeben – sonst spielt das iPhone Jarvis' Stimme leise über die Hörmuschel.
+        try { mikro.getTracks().forEach((t) => t.stop()); } catch {} mikro = null;
+        abschicken(abbrechen ? null : stuecke, rec.mimeType || typ || "audio/mp4");
+      };
+      try { rec.stop(); } catch { abschicken(null); }
+    };
+    aufnahme = { fertig: () => ende(false) };
+    uhr = setInterval(() => {
+      const jetzt = Date.now();
+      if (analyse) {
+        analyse.getFloatTimeDomainData(puffer);
+        let summe = 0; for (let i = 0; i < puffer.length; i++) summe += puffer[i] * puffer[i];
+        const pegel = Math.sqrt(summe / puffer.length);
+        if (jetzt - start < 400) boden = Math.max(boden, pegel);           // Grundrauschen
+        const schwelle = Math.max(0.012, boden * 2.2);
+        kugel.style.setProperty("--pegel", 1 + Math.min(pegel * 6, 0.35));
+        if (pegel > schwelle) { gesprochen = true; letzteStimme = jetzt; }
+        if (gesprochen && jetzt - letzteStimme > 1300) return ende(false);
+        if (!gesprochen && jetzt - start > 8000) { ende(true); zeige("Ich habe nichts gehört. Tippe nochmal.", true); return; }
+      }
+      if (jetzt - start > 45000) ende(false);                              // Sicherheitsgrenze
+    }, 100);
+    rec.start(250);
+  }
+
+  async function abschicken(stuecke, typ) {
+    kugel.style.setProperty("--pegel", 1);
+    if (!stuecke || !stuecke.length) { if (!beschaeftigt) zustand("ruhe"); return; }
+    const blob = new Blob(stuecke, { type: typ.split(";")[0] });
+    if (blob.size < 2000) { zustand("ruhe"); zeige("Das war zu kurz. Tippe und sprich nochmal.", true); return; }
+    zustand("denkt"); zeige("…", true);
+    try {
+      const a = await fetch("/api/hoeren", { method: "POST", headers: { "Content-Type": blob.type || "audio/mp4", "X-Jarvis": "1" }, body: blob });
+      const j = await a.json().catch(() => ({}));
+      if (!a.ok) throw new Error(j.fehler || "Fehler " + a.status);
+      const text = (j.text || "").trim();
+      if (!text) { zustand("ruhe"); zeige("Ich habe dich nicht verstanden. Tippe und sprich nochmal.", true); return; }
+      zeige("„" + esc(text) + "“"); frage(text);
+    } catch (e) {
+      zustand("ruhe"); zeige("Spracherkennung gestört: " + esc(e.message), true);
+    }
+  }
+
+  function safariHoeren() {
+    if (!SR) { zeige("Spracheingabe geht in diesem Browser nicht. Tippe oben rechts auf die Tastatur.", true); return; }
+    erkennung = new SR(); erkennung.lang = "de-DE"; erkennung.interimResults = true; erkennung.continuous = true;
     gehoert = "";
-    erkennung.onresult = (ev) => { gehoert = Array.from(ev.results).map((r) => r[0].transcript).join(" "); zeige("„" + esc(gehoert) + "“"); };
+    let stilleUhr = null;
+    const weiter = () => { clearTimeout(stilleUhr); stilleUhr = setTimeout(() => { try { erkennung && erkennung.stop(); } catch {} }, 1600); };
+    erkennung.onresult = (ev) => {
+      // iPhone liefert Teilergebnisse teils doppelt/aufbauend – zusammenführen.
+      const teile = [];
+      for (const r of Array.from(ev.results)) {
+        const t = r[0].transcript.trim(); if (!t) continue;
+        const v = teile[teile.length - 1];
+        if (v && t.toLowerCase().startsWith(v.toLowerCase())) teile[teile.length - 1] = t; else teile.push(t);
+      }
+      gehoert = teile.join(" "); zeige("„" + esc(gehoert) + "“"); weiter();
+    };
     erkennung.onerror = (ev) => {
+      if (ev.error === "aborted") return;
       zeige(ev.error === "not-allowed" || ev.error === "service-not-allowed" ? "Bitte erlaube Mikrofon und Spracherkennung für Safari (Einstellungen → Safari)." : ev.error === "no-speech" ? "Ich habe nichts gehört. Tippe nochmal." : "Spracheingabe gestört (" + esc(ev.error) + ").", true);
     };
-    erkennung.onend = () => { erkennung = null; if (gehoert.trim()) frage(gehoert); else if (!beschaeftigt) zustand("ruhe"); };
+    erkennung.onend = () => { clearTimeout(stilleUhr); erkennung = null; if (gehoert.trim()) frage(gehoert); else if (!beschaeftigt) zustand("ruhe"); };
     zustand("hoert"); zeige("Ich höre zu …", true);
     try { erkennung.start(); } catch { erkennung = null; zustand("ruhe"); zeige("Spracheingabe konnte nicht starten.", true); }
-  };
+  }
 
   // ---------- Tippen ----------
   $("tastatur").onclick = () => { const t = $("tippen"); t.classList.toggle("versteckt"); if (!t.classList.contains("versteckt")) feld.focus(); };
@@ -521,7 +609,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
   async function laden() {
     let s = { hermes: false, lulu: false, github: false, stimme: false };
     try { s = await api("/api/status"); } catch {}
-    serverStimme = !!s.stimme;
+    serverStimme = !!s.stimme; groqDa = !!(s.gesetzt || {}).GROQ_API_KEY;
     $("punkt").className = "punkt " + (s.hermes ? "an" : "aus");
     $("statustext").textContent = s.hermes ? "online" : "offline";
     zeichneVerbindungen(s.gesetzt);
