@@ -120,27 +120,51 @@ ANWEISUNG = ("Du bist Jarvis, Helens persönlicher Sprach-Assistent für ihre Af
              "Deine Antworten werden laut vorgelesen: antworte auf Deutsch, in ein bis drei kurzen, "
              "natürlichen Sätzen, ohne Listen, Tabellen, Links oder Markdown – außer Helen bittet ausdrücklich "
              "um Details. Für Lulu-Aufgaben nutze den Skill 'lulu'.")
-DENKSTUFE = os.environ.get("JARVIS_DENKSTUFE", "low")
+# Tempo-Stufen: welches Modell (über das ChatGPT-Abo) und wie viel Denkzeit.
+TEMPO = {
+    "blitz": {"model": "gpt-5.3-codex-spark", "provider": "openai-codex", "denken": "low"},
+    "schnell": {"model": "gpt-6-luna", "provider": "openai-codex", "denken": "low"},
+    "gruendlich": {"model": None, "provider": None, "denken": "medium"},
+    "_standard": {"model": None, "provider": None, "denken": "low"},  # Ersatz, wenn ein Modell fehlt
+}
 
 
-def _hermes_anfrage(text, env, stream):
+def _hermes_anfrage(text, env, stream, tempo="schnell"):
     schluessel = env.get("API_SERVER_KEY", "")
     if not schluessel:
         raise lulu.Fehler("Die Hermes-Schnittstelle ist noch nicht eingeschaltet.")
+    stufe = TEMPO.get(tempo, TEMPO["schnell"])
     daten = {"model": "hermes-agent", "input": text, "instructions": ANWEISUNG,
              "conversation": gespraech(), "store": True, "stream": stream,
-             "model_options": {"reasoning_effort": DENKSTUFE}}
+             "model_options": {"reasoning_effort": stufe["denken"]}}
+    if stufe["model"]:
+        daten["model"] = stufe["model"]
+        daten["provider"] = stufe["provider"]
     return urllib.request.Request(
         HERMES_API + "/v1/responses", data=json.dumps(daten).encode(), method="POST",
         headers={"Authorization": "Bearer " + schluessel, "Content-Type": "application/json",
                  "Accept": "text/event-stream" if stream else "application/json"})
 
 
-def hermes_strom(text, env, senden):
+def hermes_strom(text, env, senden, tempo="schnell"):
     """Leitet Hermes' Antwort Stück für Stück weiter: senden({"t": "text"|"werkzeug"|"ende", ...})."""
-    req = _hermes_anfrage(text, env, True)
+    try:
+        return _hermes_strom(text, env, senden, tempo)
+    except _ModellFehlt:
+        # Schnelles Modell im Abo nicht verfügbar → mit dem Standard-Modell weiter.
+        senden({"t": "hinweis", "d": "Schnelles Modell nicht verfügbar – nutze Standard."})
+        return _hermes_strom(text, env, senden, "_standard")
+
+
+class _ModellFehlt(Exception):
+    pass
+
+
+def _hermes_strom(text, env, senden, tempo):
+    req = _hermes_anfrage(text, env, True, tempo)
     nebenbei = set()  # Zwischenkommentare (phase=commentary) nicht vorlesen
     status = None
+    erstes = time.time()
     try:
         with urllib.request.urlopen(req, timeout=600) as a:
             for roh in a:
@@ -163,10 +187,18 @@ def hermes_strom(text, env, senden):
                         senden({"t": "werkzeug", "n": item.get("name")})
                 elif typ == "response.output_text.delta" and ev.get("item_id") not in nebenbei:
                     if ev.get("delta"):
+                        if erstes:
+                            sys.stderr.write(f"Tempo {tempo}: erstes Wort nach {time.time() - erstes:.1f}s\n")
+                            erstes = None
                         senden({"t": "text", "d": ev["delta"]})
                 elif typ in ("response.completed", "response.failed", "response.cancelled", "response.incomplete"):
                     status = (ev.get("response") or {}).get("status") or typ.rsplit(".", 1)[-1]
+                    fehlertext = json.dumps((ev.get("response") or {}).get("error") or "")
+                    if status == "failed" and TEMPO[tempo]["model"] and re.search(r"model|not supported|unknown", fehlertext, re.I):
+                        raise _ModellFehlt()
     except urllib.error.HTTPError as e:
+        if e.code in (400, 404) and TEMPO.get(tempo, {}).get("model"):
+            raise _ModellFehlt() from None
         raise lulu.Fehler(f"Hermes meldet Fehler {e.code}.") from None
     except urllib.error.URLError:
         raise lulu.Fehler("Hermes ist gerade nicht erreichbar.") from None
@@ -374,8 +406,9 @@ class Handler(BaseHTTPRequestHandler):
                 def senden(obj):
                     self.wfile.write(("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode())
                     self.wfile.flush()
+                tempo = str(daten.get("tempo", "schnell"))
                 try:
-                    hermes_strom(text, env, senden)
+                    hermes_strom(text, env, senden, tempo if tempo in ("blitz", "schnell", "gruendlich") else "schnell")
                 except lulu.Fehler as e:
                     senden({"t": "fehler", "d": str(e)})
                 except (BrokenPipeError, ConnectionResetError):
