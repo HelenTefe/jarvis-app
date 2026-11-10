@@ -4,7 +4,7 @@
 Läuft als Benutzer `jarvis` auf 127.0.0.1:9130 und wird nur über Tailscale Serve
 (https://<server>.ts.net:8443) erreichbar gemacht. Nur Python-Standardbibliothek.
 
-Schlüssel kommen aus ~/.hermes/.env (API_SERVER_KEY, GITHUB_TOKEN, LULU_SUPABASE_URL,
+Schlüssel kommen aus ~/.hermes/.env (API_SERVER_KEY, LULU_GITHUB_TOKEN, LULU_SUPABASE_URL,
 LULU_SUPABASE_KEY) – sie verlassen den Server nie und werden nie an den Browser geschickt.
 """
 import json
@@ -68,12 +68,39 @@ def env_laden():
     except OSError:
         pass
     with _env_sperre:
-        for k in ("GITHUB_TOKEN", "LULU_SUPABASE_URL", "LULU_SUPABASE_KEY", "LULU_REPO"):
+        for k in ("LULU_GITHUB_TOKEN", "LULU_SUPABASE_URL", "LULU_SUPABASE_KEY", "LULU_REPO"):
             if werte.get(k):
                 os.environ[k] = werte[k]
             elif k in os.environ and k != "LULU_REPO":
                 del os.environ[k]
     return werte
+
+
+def alten_github_namen_umziehen():
+    """Frühere Versionen speicherten GITHUB_TOKEN – den reicht Hermes aber nie an Skills weiter.
+    Einmalig in LULU_GITHUB_TOKEN umbenennen und Hermes neu starten."""
+    try:
+        zeilen = HERMES_ENV.read_text().splitlines()
+    except OSError:
+        return
+    alt = [z for z in zeilen if re.match(r"\s*(export\s+)?GITHUB_TOKEN\s*=", z)]
+    if not alt:
+        return
+    neu_da = any(re.match(r"\s*(export\s+)?LULU_GITHUB_TOKEN\s*=", z) for z in zeilen)
+    rest = [z for z in zeilen if z not in alt]
+    if not neu_da:
+        wert = alt[-1].split("=", 1)[1].strip()
+        rest.append("LULU_GITHUB_TOKEN=" + wert)
+    with _env_sperre:
+        HERMES_ENV.write_text("\n".join(rest) + "\n")
+        os.chmod(HERMES_ENV, 0o600)
+    print("GitHub-Schlüssel auf LULU_GITHUB_TOKEN umgestellt.", flush=True)
+    try:
+        import subprocess
+        subprocess.Popen(["systemctl", "--user", "restart", "hermes-gateway.service"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
 
 
 def lulu_bereit():
@@ -83,7 +110,7 @@ def lulu_bereit():
 # ---------- Schlüssel eintragen (nur diese drei, Werte werden nie zurückgegeben) ----------
 
 SCHLUESSEL_REGELN = {
-    "GITHUB_TOKEN": re.compile(r"(github_pat_|ghp_)[A-Za-z0-9_]{20,255}"),
+    "LULU_GITHUB_TOKEN": re.compile(r"(github_pat_|ghp_)[A-Za-z0-9_]{20,255}"),
     "LULU_SUPABASE_URL": re.compile(r"https://[a-z0-9]{10,40}\.supabase\.co/?"),
     "LULU_SUPABASE_KEY": re.compile(r"[A-Za-z0-9_\-\.]{30,1200}"),
     "GROQ_API_KEY": re.compile(r"gsk_[A-Za-z0-9]{20,200}"),
@@ -96,7 +123,7 @@ def schluessel_speichern(name, wert):
         raise lulu.Fehler("Diesen Schlüssel kann die App nicht setzen.")
     wert = (wert or "").strip()
     if not regel.fullmatch(wert):
-        hilfe = {"GITHUB_TOKEN": "Ein GitHub-Token beginnt mit „github_pat_“.",
+        hilfe = {"LULU_GITHUB_TOKEN": "Ein GitHub-Token beginnt mit „github_pat_“.",
                  "LULU_SUPABASE_URL": "Die Adresse sieht so aus: https://….supabase.co",
                  "LULU_SUPABASE_KEY": "Bitte den ganzen Schlüssel ohne Leerzeichen einfügen.",
                  "GROQ_API_KEY": "Ein Groq-Schlüssel beginnt mit „gsk_“."}[name]
@@ -506,7 +533,7 @@ class Handler(BaseHTTPRequestHandler):
                     stimme = False
                 self._json(200, {"hermes": hermes_online(env), "lulu": lulu_bereit(), "stimme": stimme,
                                  "gesetzt": {k: bool(env.get(k)) for k in SCHLUESSEL_REGELN},
-                                 "github": bool(os.environ.get("GITHUB_TOKEN")),
+                                 "github": bool(os.environ.get("LULU_GITHUB_TOKEN")),
                                  "nutzer": self.headers.get("Tailscale-User-Name", "")})
             elif pfad == "/api/beitraege":
                 self._json(200, lulu.beitraege([]) if lulu_bereit() else [])
@@ -646,6 +673,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    alten_github_namen_umziehen()
     env_laden()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Jarvis-App läuft auf http://127.0.0.1:{PORT}", flush=True)

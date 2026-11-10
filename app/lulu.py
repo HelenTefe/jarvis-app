@@ -13,7 +13,7 @@ Nur feste, ungefährliche Befehle – kein freier Datenbank- oder GitHub-Zugriff
   python3 lulu.py aufgaben
   python3 lulu.py kosten
 
-Umgebungsvariablen: GITHUB_TOKEN, LULU_SUPABASE_URL, LULU_SUPABASE_KEY,
+Umgebungsvariablen: LULU_GITHUB_TOKEN (früher GITHUB_TOKEN), LULU_SUPABASE_URL, LULU_SUPABASE_KEY,
 optional LULU_REPO (Standard: HelenTefe/Ai-agent-lulu).
 Nur Python-Standardbibliothek.
 """
@@ -57,9 +57,18 @@ def _anfrage(methode, url, kopf, daten=None):
 
 # ---------- GitHub ----------
 
+def _github_token():
+    # Hermes gibt GITHUB_TOKEN nie an Skills weiter (eigener Name) – daher LULU_GITHUB_TOKEN.
+    if os.environ.get("LULU_GITHUB_TOKEN", "").strip():
+        return _umgebung("LULU_GITHUB_TOKEN")
+    if os.environ.get("GITHUB_TOKEN", "").strip():
+        return _umgebung("GITHUB_TOKEN")
+    return _umgebung("LULU_GITHUB_TOKEN")
+
+
 def _gh(methode, pfad, daten=None):
     kopf = {
-        "Authorization": "Bearer " + _umgebung("GITHUB_TOKEN"),
+        "Authorization": "Bearer " + _github_token(),
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "lulu-hermes-skill",
